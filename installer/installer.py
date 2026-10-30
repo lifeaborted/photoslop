@@ -90,14 +90,23 @@ def download_models_interactive():
     with open(MODELS_CONFIG_PATH, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    models = config.get("models", [])
+    models = []
+    if "categories" in config:
+        for cat, m_list in config["categories"].items():
+            for m in m_list:
+                m_copy = dict(m)
+                m_copy["category"] = cat
+                models.append(m_copy)
+    else:
+        models = config.get("models", [])
+
     print(f"  Найдено описаний моделей в конфиге: {len(models)}")
 
     for m in models:
         m_id = m.get("id")
         name = m.get("name")
         filename = m.get("filename")
-        url = m.get("download_url")
+        url = m.get("download_url", "")
         dest = MODELS_DIR / filename
 
         if dest.exists():
@@ -105,14 +114,19 @@ def download_models_interactive():
             continue
 
         print(f"\n  [?] Модель: {name} ({m_id})")
-        print(f"      Ссылка HF: {url}")
-        print(f"      Целевой файл: {filename}")
+        print(f"      Целевой файл/папка: {filename}")
 
-        # Check if URL is a placeholder or stub
-        is_placeholder = "placeholder" in url or "example" in url
-
-        if is_placeholder:
-            print(f"      [i] Ссылка содержит заглушку Hugging Face. Создаём локальный файл-заглушку.")
+        if not url or "placeholder" in url or "example" in url:
+            print(f"      [i] Ссылка не указана или является заглушкой. Создаём локальный файл-заглушку.")
+            if "." in filename:
+                with open(dest, "w", encoding="utf-8") as stub_f:
+                    stub_f.write(f"# Placeholder stub for {name}\n")
+            else:
+                dest.mkdir(parents=True, exist_ok=True)
+                with open(dest / "model_index.json", "w", encoding="utf-8") as stub_f:
+                    stub_f.write("{\n  \"_class_name\": \"AutoPipelineForText2Image\"\n}\n")
+            print(f"      [+] Заглушка создана: {filename}")
+        else:
             with open(dest, "w", encoding="utf-8") as stub_f:
                 stub_f.write(f"# Placeholder stub for {name}\n# Download URL: {url}\n")
             print(f"      [+] Заглушка создана: {filename}")

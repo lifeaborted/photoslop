@@ -18,10 +18,11 @@ class ModelsManager:
             "background_removal": "bria-rmbg-1.4"
         }
         self.cached_config: Dict[str, Any] = {}
+        self.flattened_models: List[Dict[str, Any]] = []
         self.reload_config()
 
     def reload_config(self) -> Dict[str, Any]:
-        """Reads and updates configuration from models/models.json."""
+        """Reads and updates configuration from models/models.json supporting categorized format."""
         if not self.config_path.exists():
             logger.warning(f"Config file not found at {self.config_path}. Initializing default.")
             self._create_default_config()
@@ -30,26 +31,55 @@ class ModelsManager:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Check actual file existence in /models
-            for model in data.get("models", []):
-                filename = model.get("filename")
-                if filename:
-                    file_path = self.models_dir / filename
-                    model["is_downloaded"] = file_path.exists()
-                    if file_path.exists():
-                        model["file_size_mb"] = round(file_path.stat().st_size / (1024 * 1024), 2)
-                    else:
-                        model["file_size_mb"] = 0
-                else:
-                    model["is_downloaded"] = False
+            flattened = []
+            categories = data.get("categories", {})
 
-            if "default_models" in data:
-                for cat, model_id in data["default_models"].items():
-                    if cat not in self.active_models:
-                        self.active_models[cat] = model_id
+            # Support new categorized format
+            if categories:
+                for cat, models in categories.items():
+                    for model in models:
+                        m_copy = dict(model)
+                        m_copy["category"] = cat
+
+                        filename = m_copy.get("filename")
+                        if filename:
+                            path_obj = self.models_dir / filename
+                            is_present = path_obj.exists()
+                            m_copy["is_downloaded"] = is_present
+
+                            if is_present:
+                                if path_obj.is_file():
+                                    m_copy["file_size_mb"] = round(path_obj.stat().st_size / (1024 * 1024), 2)
+                                elif path_obj.is_dir():
+                                    # Calculate directory size (e.g. for Diffusers repos like sdxl-turbo-torch-int8)
+                                    total_bytes = sum(f.stat().st_size for f in path_obj.rglob('*') if f.is_file())
+                                    m_copy["file_size_mb"] = round(total_bytes / (1024 * 1024), 2)
+                            else:
+                                m_copy["file_size_mb"] = 0
+                        else:
+                            m_copy["is_downloaded"] = False
+
+                        flattened.append(m_copy)
+
+                    # Auto-assign active model if not set
+                    if cat not in self.active_models and models:
+                        self.active_models[cat] = models[0]["id"]
+
+            elif "models" in data:
+                # Fallback for flat models list
+                for model in data["models"]:
+                    m_copy = dict(model)
+                    filename = m_copy.get("filename")
+                    if filename:
+                        path_obj = self.models_dir / filename
+                        m_copy["is_downloaded"] = path_obj.exists()
+                        if path_obj.exists():
+                            m_copy["file_size_mb"] = round(path_obj.stat().st_size / (1024 * 1024), 2)
+                    flattened.append(m_copy)
 
             self.cached_config = data
-            logger.info(f"Loaded {len(data.get('models', []))} models from {self.config_path}")
+            self.flattened_models = flattened
+            logger.info(f"Loaded {len(flattened)} models across {len(categories)} categories from {self.config_path}")
             return self.cached_config
         except Exception as e:
             logger.error(f"Error loading models configuration: {e}")
@@ -57,10 +87,9 @@ class ModelsManager:
 
     def get_models(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
         self.reload_config()
-        models = self.cached_config.get("models", [])
         if category:
-            return [m for m in models if m.get("category") == category]
-        return models
+            return [m for m in self.flattened_models if m.get("category") == category]
+        return self.flattened_models
 
     def get_model_by_id(self, model_id: str) -> Optional[Dict[str, Any]]:
         for m in self.get_models():
@@ -143,11 +172,14 @@ class ModelsManager:
         return status
 
     def _create_default_config(self):
-        """Creates minimal configuration if models.json is missing."""
+        """Creates minimal categorized configuration if models.json is missing."""
         default_data = {
-            "version": "1.0",
-            "default_models": self.active_models,
-            "models": []
+            "categories": {
+                "inpaint": [],
+                "edit": [],
+                "txt2img": [],
+                "background_removal": []
+            }
         }
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=2, ensure_ascii=False)

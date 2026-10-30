@@ -68,7 +68,8 @@ class PepeShopApp {
       const opt = document.createElement("option");
       opt.value = m.id;
       const dlMark = m.is_downloaded ? "✓ " : "[HF] ";
-      opt.textContent = `${dlMark}${m.name} (${m.precision.toUpperCase()})`;
+      const prec = m.precision ? ` (${m.precision.toUpperCase()})` : "";
+      opt.textContent = `${dlMark}${m.name}${prec}`;
 
       if (m.category === "inpaint" || m.category === "edit") {
         opt.selected = active.inpaint?.id === m.id || active.edit?.id === m.id;
