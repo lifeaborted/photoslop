@@ -176,7 +176,7 @@ def test_inference():
         return
 
     print("\n=== [3/3] Генерация тестового изображения (1 шаг) ===")
-    prompt = "a cute frog in cyberpunk style, glowing neon lights, 8k resolution"
+    prompt = "a watermelon lying on table, 8k resolution"
     print(f"  Промпт: '{prompt}'")
 
     start_gen = time.time()

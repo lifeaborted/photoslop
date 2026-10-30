@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.app.models_manager import models_manager
+from backend.app.pipeline_manager import pipeline_manager
 from backend.app.logger import logger
 
 router = APIRouter(prefix="/api/models", tags=["Models"])
@@ -40,8 +41,14 @@ def switch_model(payload: SwitchModelRequest):
     """Dynamically switches active model for specified category."""
     logger.info(f"Received request to switch model for [{payload.category}] -> {payload.model_id}")
     try:
-        result = models_manager.switch_model(payload.category, payload.model_id)
-        return result
+        pipeline_manager.switch_model(payload.category, payload.model_id)
+        model = models_manager.get_model_by_id(payload.model_id)
+        return {
+            "category": payload.category,
+            "active_model": payload.model_id,
+            "model_info": model,
+            "status": "success"
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

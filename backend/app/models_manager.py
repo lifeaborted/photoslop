@@ -19,15 +19,21 @@ class ModelsManager:
         }
         self.cached_config: Dict[str, Any] = {}
         self.flattened_models: List[Dict[str, Any]] = []
-        self.reload_config()
+        self._last_mtime: float = 0.0
+        self.reload_config(force=True)
 
-    def reload_config(self) -> Dict[str, Any]:
+    def reload_config(self, force: bool = False) -> Dict[str, Any]:
         """Reads and updates configuration from models/models.json supporting categorized format."""
         if not self.config_path.exists():
             logger.warning(f"Config file not found at {self.config_path}. Initializing default.")
             self._create_default_config()
 
         try:
+            current_mtime = self.config_path.stat().st_mtime
+            if not force and self.cached_config and current_mtime == self._last_mtime:
+                return self.cached_config
+
+            self._last_mtime = current_mtime
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
@@ -80,6 +86,7 @@ class ModelsManager:
             self.cached_config = data
             self.flattened_models = flattened
             logger.info(f"Loaded {len(flattened)} models across {len(categories)} categories from {self.config_path}")
+            return self.cached_config
             return self.cached_config
         except Exception as e:
             logger.error(f"Error loading models configuration: {e}")

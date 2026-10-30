@@ -68,10 +68,11 @@ class TextToImagePipeline(BasePipeline):
 
     def load(self) -> bool:
         model_id = self.model_info.get("id", "")
+        filename = self.model_info.get("filename", "")
         model_name = self.model_info.get("name", "")
         logger.info(f"Loading txt2img model: {model_name} [{model_id}]")
 
-        model_path = MODELS_DIR / model_id
+        model_path = MODELS_DIR / filename if filename else MODELS_DIR / model_id
         if not model_path.exists():
             # Check if sdxl-turbo-torch-int8 directory exists
             alt_path = MODELS_DIR / "sdxl-turbo-torch-int8"
@@ -104,6 +105,7 @@ class TextToImagePipeline(BasePipeline):
                     return True
             except Exception as e:
                 logger.error(f"Failed to load Diffusers model from {model_path}: {e}")
+                raise
 
         # Fallback to simulated fast pipeline
         self.is_loaded = True
@@ -140,27 +142,28 @@ class TextToImagePipeline(BasePipeline):
         )
 
         if self.pipe is not None:
-            try:
-                import torch
-                generator = torch.Generator(device="cuda")
-                if seed is not None:
-                    generator.manual_seed(seed)
+            import torch
+            generator = torch.Generator(device="cuda")
+            if seed is not None:
+                generator.manual_seed(seed)
 
-                image = self.pipe(
-                    prompt=prompt,
-                    negative_prompt=negative_prompt if negative_prompt else None,
-                    width=width,
-                    height=height,
-                    num_inference_steps=max(1, steps),
-                    guidance_scale=0.0,
-                    generator=generator
-                ).images[0]
+            # Ensure width and height are divisible by 8 for SDXL latents
+            w_div = max(64, (width // 8) * 8)
+            h_div = max(64, (height // 8) * 8)
 
-                elapsed = time.time() - start_time
-                logger.info(f"Txt2Img real Diffusers generation finished in {elapsed:.3f}s")
-                return image
-            except Exception as e:
-                logger.error(f"Diffusers inference error: {e}. Falling back to procedural generator.")
+            image = self.pipe(
+                prompt=prompt,
+                negative_prompt=negative_prompt if negative_prompt else None,
+                width=w_div,
+                height=h_div,
+                num_inference_steps=max(1, steps),
+                guidance_scale=0.0,
+                generator=generator
+            ).images[0]
+
+            elapsed = time.time() - start_time
+            logger.info(f"Txt2Img Diffusers generation completed in {elapsed:.3f}s")
+            return image
 
         # Built-in generator fallback with visual abstract gradient art based on prompt seed
         if seed is None:

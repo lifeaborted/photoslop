@@ -3,11 +3,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.app.models_manager import models_manager
-from backend.app.logger import logger
+from backend.app.pipeline_manager import pipeline_manager
+from backend.app.logger import logger, track_model_execution
 from backend.app.api.editor import data_uri_to_pil, pil_to_data_uri
-from backend.app.pipelines.rembg_pipeline import BackgroundRemovalPipeline
-from backend.app.pipelines.inpaint_pipeline import InpaintPipeline
-from backend.app.pipelines.txt2img_pipeline import TextToImagePipeline
 
 router = APIRouter(prefix="/api/generation", tags=["Generation & AI"])
 
@@ -41,7 +39,7 @@ class TextToImageRequest(BaseModel):
     negative_prompt: Optional[str] = ""
     width: Optional[int] = 512
     height: Optional[int] = 512
-    steps: Optional[int] = 4
+    steps: Optional[int] = 1
     seed: Optional[int] = None
     model_id: Optional[str] = None
 
@@ -52,12 +50,20 @@ def remove_background(payload: RemoveBackgroundRequest):
     start_time = time.time()
     active_id = payload.model_id or models_manager.active_models.get("background_removal", "bria-rmbg-1.4")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
+    model_name = model_info.get("name", active_id)
 
-    logger.info(f"API remove-background request using model: {active_id}")
     try:
         input_img = data_uri_to_pil(payload.image_data)
-        pipeline = BackgroundRemovalPipeline(model_info)
-        result_img = pipeline.process(input_img)
+
+        with track_model_execution(
+            category="background_removal",
+            model_id=active_id,
+            model_name=model_name,
+            params={"size": f"{input_img.width}x{input_img.height}"}
+        ) as tracker:
+            pipeline = pipeline_manager.get_pipeline("background_removal", active_id)
+            result_img = pipeline.process(input_img)
+            tracker.set_result(f"{result_img.width}x{result_img.height} RGBA")
 
         result_uri = pil_to_data_uri(result_img, format="PNG")
         elapsed = round(time.time() - start_time, 3)
@@ -65,7 +71,7 @@ def remove_background(payload: RemoveBackgroundRequest):
         return {
             "status": "success",
             "model_id": active_id,
-            "model_name": model_info.get("name"),
+            "model_name": model_name,
             "elapsed_seconds": elapsed,
             "width": result_img.width,
             "height": result_img.height,
@@ -82,22 +88,35 @@ def inpaint_image(payload: InpaintRequest):
     start_time = time.time()
     active_id = payload.model_id or models_manager.active_models.get("inpaint", "sd15-inpainting-fp16")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
+    model_name = model_info.get("name", active_id)
 
-    logger.info(f"API inpaint request. Model: {active_id}, Prompt: '{payload.prompt}'")
     try:
         input_img = data_uri_to_pil(payload.image_data)
         mask_img = data_uri_to_pil(payload.mask_data)
 
-        pipeline = InpaintPipeline(model_info)
-        result_img = pipeline.inpaint(
-            image=input_img,
-            mask=mask_img,
-            prompt=payload.prompt,
-            negative_prompt=payload.negative_prompt or "",
-            seed=payload.seed,
-            steps=payload.steps or 20,
-            guidance_scale=payload.guidance_scale or 7.5
-        )
+        with track_model_execution(
+            category="inpaint",
+            model_id=active_id,
+            model_name=model_name,
+            params={
+                "prompt": payload.prompt[:60],
+                "steps": payload.steps or 20,
+                "guidance": payload.guidance_scale or 7.5,
+                "seed": payload.seed,
+                "size": f"{input_img.width}x{input_img.height}"
+            }
+        ) as tracker:
+            pipeline = pipeline_manager.get_pipeline("inpaint", active_id)
+            result_img = pipeline.inpaint(
+                image=input_img,
+                mask=mask_img,
+                prompt=payload.prompt,
+                negative_prompt=payload.negative_prompt or "",
+                seed=payload.seed,
+                steps=payload.steps or 20,
+                guidance_scale=payload.guidance_scale or 7.5
+            )
+            tracker.set_result(f"{result_img.width}x{result_img.height} PNG")
 
         result_uri = pil_to_data_uri(result_img, format="PNG")
         elapsed = round(time.time() - start_time, 3)
@@ -105,7 +124,7 @@ def inpaint_image(payload: InpaintRequest):
         return {
             "status": "success",
             "model_id": active_id,
-            "model_name": model_info.get("name"),
+            "model_name": model_name,
             "elapsed_seconds": elapsed,
             "width": result_img.width,
             "height": result_img.height,
@@ -122,17 +141,30 @@ def text_edit_image(payload: TextEditRequest):
     start_time = time.time()
     active_id = payload.model_id or models_manager.active_models.get("edit", "flux1-kontext-q2")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
+    model_name = model_info.get("name", active_id)
 
-    logger.info(f"API text-edit request. Model: {active_id}, Prompt: '{payload.prompt}'")
     try:
         input_img = data_uri_to_pil(payload.image_data)
-        pipeline = InpaintPipeline(model_info)
-        result_img = pipeline.text_edit(
-            image=input_img,
-            prompt=payload.prompt,
-            strength=payload.strength or 0.5,
-            seed=payload.seed
-        )
+
+        with track_model_execution(
+            category="edit",
+            model_id=active_id,
+            model_name=model_name,
+            params={
+                "prompt": payload.prompt[:60],
+                "strength": payload.strength or 0.5,
+                "seed": payload.seed,
+                "size": f"{input_img.width}x{input_img.height}"
+            }
+        ) as tracker:
+            pipeline = pipeline_manager.get_pipeline("edit", active_id)
+            result_img = pipeline.text_edit(
+                image=input_img,
+                prompt=payload.prompt,
+                strength=payload.strength or 0.5,
+                seed=payload.seed
+            )
+            tracker.set_result(f"{result_img.width}x{result_img.height} PNG")
 
         result_uri = pil_to_data_uri(result_img, format="PNG")
         elapsed = round(time.time() - start_time, 3)
@@ -140,7 +172,7 @@ def text_edit_image(payload: TextEditRequest):
         return {
             "status": "success",
             "model_id": active_id,
-            "model_name": model_info.get("name"),
+            "model_name": model_name,
             "elapsed_seconds": elapsed,
             "width": result_img.width,
             "height": result_img.height,
@@ -153,22 +185,38 @@ def text_edit_image(payload: TextEditRequest):
 
 @router.post("/txt2img")
 def text_to_image(payload: TextToImageRequest):
-    """Generates a new image from scratch based on text prompt."""
+    """Generates a new image from scratch based on text prompt with real model inference."""
     start_time = time.time()
     active_id = payload.model_id or models_manager.active_models.get("txt2img", "sdxl-turbo-int8")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
+    model_name = model_info.get("name", active_id)
 
-    logger.info(f"API txt2img request. Model: {active_id}, Prompt: '{payload.prompt}'")
+    steps = payload.steps if (payload.steps and payload.steps > 0) else 1
+    width = payload.width or 512
+    height = payload.height or 512
+
     try:
-        pipeline = TextToImagePipeline(model_info)
-        result_img = pipeline.generate(
-            prompt=payload.prompt,
-            negative_prompt=payload.negative_prompt or "",
-            width=payload.width or 512,
-            height=payload.height or 512,
-            steps=payload.steps or 4,
-            seed=payload.seed
-        )
+        with track_model_execution(
+            category="txt2img",
+            model_id=active_id,
+            model_name=model_name,
+            params={
+                "prompt": payload.prompt[:60],
+                "steps": steps,
+                "seed": payload.seed,
+                "size": f"{width}x{height}"
+            }
+        ) as tracker:
+            pipeline = pipeline_manager.get_pipeline("txt2img", active_id)
+            result_img = pipeline.generate(
+                prompt=payload.prompt,
+                negative_prompt=payload.negative_prompt or "",
+                width=width,
+                height=height,
+                steps=steps,
+                seed=payload.seed
+            )
+            tracker.set_result(f"{result_img.width}x{result_img.height} PNG")
 
         result_uri = pil_to_data_uri(result_img, format="PNG")
         elapsed = round(time.time() - start_time, 3)
@@ -176,7 +224,7 @@ def text_to_image(payload: TextToImageRequest):
         return {
             "status": "success",
             "model_id": active_id,
-            "model_name": model_info.get("name"),
+            "model_name": model_name,
             "elapsed_seconds": elapsed,
             "width": result_img.width,
             "height": result_img.height,

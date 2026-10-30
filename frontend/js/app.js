@@ -390,14 +390,22 @@ class PepeShopApp {
     }
 
     const activeModel = document.getElementById("select-txt-model")?.value;
-    this.showToast(`Генерация новой картинки: "${prompt}"...`);
+    const stepsInput = document.getElementById("ai-steps");
+    const seedInput = document.getElementById("ai-seed");
+    const steps = stepsInput ? Math.max(1, parseInt(stepsInput.value, 10) || 1) : 1;
+    const seedVal = seedInput ? parseInt(seedInput.value, 10) : -1;
+    const seed = (isNaN(seedVal) || seedVal < 0) ? null : seedVal;
+
+    this.showToast(`Генерация новой картинки: "${prompt}" (Шагов: ${steps})...`);
     this.setLoading(true);
 
     try {
       const res = await api.txt2img(prompt, {
         modelId: activeModel,
-        width: 800,
-        height: 600
+        width: 512,
+        height: 512,
+        steps: steps,
+        seed: seed
       });
 
       const img = new Image();

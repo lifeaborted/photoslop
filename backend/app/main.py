@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from backend.app.config import APP_NAME, APP_VERSION, FRONTEND_DIR, LOG_FILE_PATH
 from backend.app.logger import logger, setup_logging
 from backend.app.models_manager import models_manager
+from backend.app.pipeline_manager import pipeline_manager
 from backend.app.api.models import router as models_router
 from backend.app.api.editor import router as editor_router
 from backend.app.api.generation import router as generation_router
@@ -28,21 +29,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request logging middleware with Loguru
+# Request logging middleware with Loguru (filtered to eliminate routine noise)
 @app.middleware("http")
 async def loguru_requests_middleware(request: Request, call_next):
     start_time = time.time()
-    client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
 
-    # Log incoming request
-    if not path.startswith("/static") and not path.endswith((".css", ".js", ".png", ".ico")):
-        logger.debug(f"HTTP {request.method} {path} from {client_ip}")
+    # Filter out noisy routine requests from polluting the log file
+    is_noisy = (
+        path.startswith("/static")
+        or path.endswith((".css", ".js", ".png", ".jpg", ".jpeg", ".ico", ".woff2"))
+        or path in ("/", "/favicon.ico", "/api/models/hardware", "/api/models", "/api/models/active")
+    )
 
     response = await call_next(request)
     duration_ms = (time.time() - start_time) * 1000
 
-    if not path.startswith("/static") and not path.endswith((".css", ".js", ".png", ".ico")):
+    # Only log significant actions or errors
+    if not is_noisy or response.status_code >= 400:
         logger.info(
             f"HTTP {request.method} {path} -> {response.status_code} ({duration_ms:.1f}ms)"
         )
@@ -83,7 +87,9 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    logger.info(f"Shutting down {APP_NAME}. Goodbye!")
+    logger.info(f"Shutting down {APP_NAME}. Cleaning up GPU pipelines...")
+    pipeline_manager.unload_all()
+    logger.info(f"{APP_NAME} shutdown complete. Goodbye!")
 
 
 # Serve frontend static assets
