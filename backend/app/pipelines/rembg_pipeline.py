@@ -1,5 +1,6 @@
 import io
 import time
+from pathlib import Path
 from typing import Dict, Any, Optional
 from PIL import Image, ImageOps, ImageFilter
 import numpy as np
@@ -35,15 +36,17 @@ class BackgroundRemovalPipeline(BasePipeline):
 
         image_rgba = image.convert("RGBA")
 
-        # Try real rembg if installed
+        # Check if local model or cached session exists before attempting online download
         try:
-            import rembg
-            result = rembg.remove(image_rgba)
-            elapsed = time.time() - start_time
-            logger.info(f"rembg successfully removed background in {elapsed:.3f}s")
-            return result
-        except ImportError:
-            pass
+            import os
+            # If user has set U2NET_HOME or cached weights exist
+            u2net_path = Path.home() / ".u2net" / "u2net.onnx"
+            if u2net_path.exists():
+                import rembg
+                result = rembg.remove(image_rgba)
+                elapsed = time.time() - start_time
+                logger.info(f"rembg successfully removed background in {elapsed:.3f}s")
+                return result
         except Exception as e:
             logger.warning(f"rembg native failed ({e}), falling back to built-in edge matte.")
 

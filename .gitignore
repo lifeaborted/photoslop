@@ -11,6 +11,7 @@ env/
 ENV/
 
 # Model weights (large binaries, kept locally)
+models/*/**
 models/*.safetensors
 models/*.gguf
 models/*.pth

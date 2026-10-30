@@ -8,12 +8,10 @@ python-multipart>=0.0.9
 requests>=2.31.0
 tqdm>=4.66.0
 aiofiles>=23.2.1
-
-# Optional ML dependencies (installed in Docker or host with CUDA)
-# torch>=2.2.0
-# torchvision>=0.17.0
-# diffusers>=0.27.0
-# transformers>=4.38.0
-# accelerate>=0.28.0
-# onnxruntime>=1.17.0
-# rembg>=2.0.56
+torch>=2.2.0
+torchvision>=0.17.0
+diffusers>=0.27.0
+transformers>=4.38.0
+accelerate>=0.28.0
+onnxruntime>=1.17.0
+rembg>=2.0.56
