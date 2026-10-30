@@ -1,17 +1,26 @@
+# Core Web Framework & Logging
 fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
 loguru>=0.7.2
-pillow>=10.2.0
-numpy>=1.26.0
 pydantic>=2.6.0
 python-multipart>=0.0.9
+aiofiles>=23.2.1
 requests>=2.31.0
 tqdm>=4.66.0
-aiofiles>=23.2.1
+psutil>=5.9.0
+
+# Image & Data Processing
+pillow>=10.2.0
+numpy>=1.26.0
+
+# Deep Learning & Quantization (CUDA recommended for 6GB VRAM)
 torch>=2.2.0
 torchvision>=0.17.0
+torchao>=0.7.0
 diffusers>=0.27.0
 transformers>=4.38.0
 accelerate>=0.28.0
+
+# Background Removal (ONNX / RMBG)
 onnxruntime>=1.17.0
 rembg>=2.0.56
