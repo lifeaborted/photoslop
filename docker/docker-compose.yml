@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  pepeshop:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pepeshop-editor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_ROOT=/app
+      - MODELS_DIR=/app/models
+      - OUTPUT_DIR=/app/output
+      - LOGS_DIR=/app/logs
+      - FRONTEND_DIR=/app/frontend
+      - HOST=0.0.0.0
+      - PORT=8000
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ../models:/app/models
+      - ../output:/app/output
+      - ../logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

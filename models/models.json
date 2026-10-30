@@ -1,0 +1,109 @@
+{
+  "version": "1.0",
+  "default_models": {
+    "inpaint": "sd15-inpainting-fp16",
+    "edit": "flux1-kontext-q2",
+    "txt2img": "sdxl-turbo-int8",
+    "background_removal": "bria-rmbg-1.4"
+  },
+  "models": [
+    {
+      "id": "sd15-inpainting-fp16",
+      "name": "Stable Diffusion 1.5 Inpainting (FP16)",
+      "category": "inpaint",
+      "architecture": "stable-diffusion-1.5",
+      "description": "Быстрая и стабильная модель инпейнтинга для 6GB VRAM. Время генерации 3-5 сек, укладывается в строгий норматив ТЗ (<60с).",
+      "recommended_vram_gb": 4.0,
+      "precision": "fp16",
+      "filename": "sd-v1-5-inpainting.safetensors",
+      "download_url": "https://huggingface.co/runwayml/stable-diffusion-inpainting/resolve/main/sd-v1-5-inpainting.safetensors",
+      "device": "cuda",
+      "is_downloaded": false,
+      "tags": ["recommended", "fast", "low-vram", "inpaint"]
+    },
+    {
+      "id": "flux1-fill-dev-q2",
+      "name": "FLUX.1 Fill Dev (GGUF Q2_K)",
+      "category": "inpaint",
+      "architecture": "flux.1-fill-dev",
+      "description": "Передовая модель инпейнтинга от Black Forest Labs с квантизацией Q2_K. Требует offload T5-XXL и sequential offload для 6GB VRAM.",
+      "recommended_vram_gb": 6.0,
+      "precision": "q2_k",
+      "filename": "flux1-fill-dev-q2_k.gguf",
+      "download_url": "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-fill-dev-Q2_K.gguf",
+      "device": "cuda",
+      "is_downloaded": false,
+      "tags": ["experimental", "high-quality", "flux", "inpaint"]
+    },
+    {
+      "id": "flux1-kontext-q2",
+      "name": "FLUX.1 Kontext (GGUF Q2_K)",
+      "category": "edit",
+      "architecture": "flux.1-kontext",
+      "description": "Контекстное редактирование изображений по текстовому описанию (instruct-edit / image-to-image).",
+      "recommended_vram_gb": 6.0,
+      "precision": "q2_k",
+      "filename": "flux1-kontext-q2_k.gguf",
+      "download_url": "https://huggingface.co/placeholder/flux1-kontext-gguf/resolve/main/flux1-kontext-Q2_K.gguf",
+      "device": "cuda",
+      "is_downloaded": false,
+      "tags": ["instruct-pix2pix", "flux", "text-guided-edit"]
+    },
+    {
+      "id": "sdxl-turbo-int8",
+      "name": "SDXL Turbo (INT8 / 1-Step)",
+      "category": "txt2img",
+      "architecture": "sdxl-turbo",
+      "description": "Ультра-быстрая генерация высокого разрешения за 1-4 шага. Отлично работает на 6GB VRAM.",
+      "recommended_vram_gb": 5.0,
+      "precision": "int8",
+      "filename": "sd_xl_turbo_1.0_fp16.safetensors",
+      "download_url": "https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors",
+      "device": "cuda",
+      "is_downloaded": false,
+      "tags": ["fast", "txt2img", "turbo"]
+    },
+    {
+      "id": "bria-rmbg-1.4",
+      "name": "BRIA RMBG-1.4 (SOTA Background Removal)",
+      "category": "background_removal",
+      "architecture": "bria-rmbg",
+      "description": "Современное удаление фона высокой точности (IoU > 0.95). Работает как на GPU, так и на CPU.",
+      "recommended_vram_gb": 1.0,
+      "precision": "fp32",
+      "filename": "model.onnx",
+      "download_url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
+      "device": "cuda_or_cpu",
+      "is_downloaded": false,
+      "tags": ["recommended", "bg-removal", "cpu-compatible"]
+    },
+    {
+      "id": "birefnet-general-lite",
+      "name": "BiRefNet General (Bilateral Reference)",
+      "category": "background_removal",
+      "architecture": "birefnet",
+      "description": "Точная сегментация мелких деталей (волосы, прозрачные объекты, шерсть).",
+      "recommended_vram_gb": 1.5,
+      "precision": "fp16",
+      "filename": "BiRefNet-general-epoch_244.pth",
+      "download_url": "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/BiRefNet-general-epoch_244.pth",
+      "device": "cuda",
+      "is_downloaded": false,
+      "tags": ["high-detail", "bg-removal"]
+    },
+    {
+      "id": "rembg-u2net",
+      "name": "U2-Net / rembg (CPU Fallback)",
+      "category": "background_removal",
+      "architecture": "u2net",
+      "description": "Классическая модель для удаления фона без GPU, полностью на процессоре (требование ТЗ 4).",
+      "recommended_vram_gb": 0.0,
+      "precision": "fp32",
+      "filename": "u2net.onnx",
+      "download_url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx",
+      "device": "cpu",
+      "is_downloaded": false,
+      "tags": ["cpu-only", "fallback", "bg-removal"]
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+import json
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from backend.app.config import MODELS_DIR, MODELS_CONFIG_PATH
+from backend.app.logger import logger
+
+
+class ModelsManager:
+    def __init__(self, config_path: Path = MODELS_CONFIG_PATH, models_dir: Path = MODELS_DIR):
+        self.config_path = config_path
+        self.models_dir = models_dir
+        self.active_models: Dict[str, str] = {
+            "inpaint": "sd15-inpainting-fp16",
+            "edit": "flux1-kontext-q2",
+            "txt2img": "sdxl-turbo-int8",
+            "background_removal": "bria-rmbg-1.4"
+        }
+        self.cached_config: Dict[str, Any] = {}
+        self.reload_config()
+
+    def reload_config(self) -> Dict[str, Any]:
+        """Reads and updates configuration from models/models.json."""
+        if not self.config_path.exists():
+            logger.warning(f"Config file not found at {self.config_path}. Initializing default.")
+            self._create_default_config()
+
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Check actual file existence in /models
+            for model in data.get("models", []):
+                filename = model.get("filename")
+                if filename:
+                    file_path = self.models_dir / filename
+                    model["is_downloaded"] = file_path.exists()
+                    if file_path.exists():
+                        model["file_size_mb"] = round(file_path.stat().st_size / (1024 * 1024), 2)
+                    else:
+                        model["file_size_mb"] = 0
+                else:
+                    model["is_downloaded"] = False
+
+            if "default_models" in data:
+                for cat, model_id in data["default_models"].items():
+                    if cat not in self.active_models:
+                        self.active_models[cat] = model_id
+
+            self.cached_config = data
+            logger.info(f"Loaded {len(data.get('models', []))} models from {self.config_path}")
+            return self.cached_config
+        except Exception as e:
+            logger.error(f"Error loading models configuration: {e}")
+            return self.cached_config
+
+    def get_models(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        self.reload_config()
+        models = self.cached_config.get("models", [])
+        if category:
+            return [m for m in models if m.get("category") == category]
+        return models
+
+    def get_model_by_id(self, model_id: str) -> Optional[Dict[str, Any]]:
+        for m in self.get_models():
+            if m.get("id") == model_id:
+                return m
+        return None
+
+    def get_active_models(self) -> Dict[str, Any]:
+        result = {}
+        for cat, model_id in self.active_models.items():
+            model_info = self.get_model_by_id(model_id)
+            result[cat] = {
+                "id": model_id,
+                "name": model_info["name"] if model_info else model_id,
+                "details": model_info
+            }
+        return result
+
+    def switch_model(self, category: str, model_id: str) -> Dict[str, Any]:
+        """Dynamically switch active model for a specific task category."""
+        model = self.get_model_by_id(model_id)
+        if not model:
+            msg = f"Model '{model_id}' not found in configuration!"
+            logger.error(msg)
+            raise ValueError(msg)
+
+        old_model_id = self.active_models.get(category)
+        self.active_models[category] = model_id
+
+        logger.info(
+            f"Dynamic model switch: Category [{category}] changed from '{old_model_id}' to '{model_id}' ({model.get('name')})"
+        )
+
+        return {
+            "category": category,
+            "previous_model": old_model_id,
+            "active_model": model_id,
+            "model_info": model,
+            "status": "success"
+        }
+
+    def get_hardware_status(self) -> Dict[str, Any]:
+        """Reads real-time VRAM, RAM, and GPU status."""
+        status = {
+            "gpu_available": False,
+            "gpu_name": "N/A",
+            "vram_total_mb": 0,
+            "vram_used_mb": 0,
+            "vram_free_mb": 0,
+            "vram_percent": 0.0,
+            "driver_version": "N/A",
+            "backend_device": "cpu"
+        }
+
+        # Try nvidia-smi
+        try:
+            output = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free,driver_version", "--format=csv,noheader,nounits"],
+                encoding="utf-8",
+                timeout=2
+            ).strip()
+            if output:
+                lines = output.splitlines()
+                first_gpu = lines[0].split(",")
+                if len(first_gpu) >= 5:
+                    status["gpu_available"] = True
+                    status["gpu_name"] = first_gpu[0].strip()
+                    total = float(first_gpu[1].strip())
+                    used = float(first_gpu[2].strip())
+                    free = float(first_gpu[3].strip())
+                    status["vram_total_mb"] = total
+                    status["vram_used_mb"] = used
+                    status["vram_free_mb"] = free
+                    status["vram_percent"] = round((used / total) * 100, 1) if total > 0 else 0
+                    status["driver_version"] = first_gpu[4].strip()
+                    status["backend_device"] = "cuda"
+        except Exception:
+            pass
+
+        return status
+
+    def _create_default_config(self):
+        """Creates minimal configuration if models.json is missing."""
+        default_data = {
+            "version": "1.0",
+            "default_models": self.active_models,
+            "models": []
+        }
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(default_data, f, indent=2, ensure_ascii=False)
+
+
+# Global singleton instance
+models_manager = ModelsManager()

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PepeShop — Локальный AI-редактор изображений</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- Top Navigation & Model Selector -->
+  <header class="top-bar">
+    <div class="logo-area">
+      <span class="logo-icon">🎨</span>
+      <span class="logo-title">PepeShop AI</span>
+      <span class="badge-tag">Local 6GB VRAM</span>
+    </div>
+
+    <!-- Dynamic Model Switchers -->
+    <div class="top-bar-center">
+      <div class="model-selector-group">
+        <label for="select-inpaint-model">🎨 Inpaint/Edit:</label>
+        <select id="select-inpaint-model" class="model-select">
+          <option value="">Загрузка моделей...</option>
+        </select>
+      </div>
+      <div class="model-selector-group">
+        <label for="select-bg-model">✂️ Удаление фона:</label>
+        <select id="select-bg-model" class="model-select">
+          <option value="">Загрузка моделей...</option>
+        </select>
+      </div>
+      <div class="model-selector-group">
+        <label for="select-txt-model">✨ Txt2Img:</label>
+        <select id="select-txt-model" class="model-select">
+          <option value="">Загрузка моделей...</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="top-bar-right">
+      <div id="hw-status-badge" class="hw-badge">
+        <span class="hw-dot"></span>
+        <span>Опрос GPU...</span>
+      </div>
+      <button id="btn-save-output" class="btn btn-primary" title="Экспорт в папку /output">
+        💾 Сохранить в /output (PNG)
+      </button>
+      <button id="btn-save-jpg" class="btn" title="Экспорт в JPG">
+        JPG
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="workspace">
+    <!-- Left Toolbar -->
+    <aside class="toolbar-left">
+      <button class="tool-btn active" data-tool="brush" title="Кисть (Brush)">
+        🖌️
+        <span class="tooltip">Кисть</span>
+      </button>
+      <button class="tool-btn" data-tool="eraser" title="Ластик (Eraser)">
+        🧹
+        <span class="tooltip">Ластик</span>
+      </button>
+      <button class="tool-btn" data-tool="inpaint_mask" title="Маска инпейнтинга (Inpaint Mask)">
+        🎭
+        <span class="tooltip">Маска инпейнтинга</span>
+      </button>
+      <button id="btn-clear-mask" class="tool-btn" title="Очистить маску">
+        ❌
+        <span class="tooltip">Очистить маску</span>
+      </button>
+
+      <div class="toolbar-separator"></div>
+
+      <!-- File Dialog Batch Upload Button -->
+      <button id="btn-open-dialog" class="tool-btn" title="Добавить фото пачкой (диалоговое окно)">
+        📁
+        <span class="tooltip">Загрузить фото (пачкой по слоям)</span>
+      </button>
+      <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+
+      <!-- 1-Click AI Background Removal -->
+      <button id="btn-remove-bg" class="tool-btn" title="Удалить фон в 1 клик (AI RMBG / rembg)">
+        ✂️
+        <span class="tooltip">Удалить фон (1 клик)</span>
+      </button>
+
+      <div class="toolbar-separator"></div>
+
+      <button id="btn-undo" class="tool-btn" title="Отмена (Ctrl+Z)">
+        ↩️
+        <span class="tooltip">Отмена (Ctrl+Z)</span>
+      </button>
+      <button id="btn-redo" class="tool-btn" title="Повтор (Ctrl+Y)">
+        ↪️
+        <span class="tooltip">Повтор (Ctrl+Y)</span>
+      </button>
+    </aside>
+
+    <!-- Canvas Viewport -->
+    <div class="canvas-viewport">
+      <div id="dropzone-overlay" class="dropzone-overlay">
+        <span style="font-size: 48px;">📥</span>
+        <div class="dropzone-text">Перетащите сюда файлы изображений</div>
+        <div style="font-size: 13px; color: #aaa;">Каждое изображение автоматически займет отдельный слой</div>
+      </div>
+      <canvas id="editor-canvas" width="800" height="600"></canvas>
+    </div>
+
+    <!-- Right Sidebar -->
+    <aside class="sidebar-right">
+      <!-- Layers Section -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <span class="panel-title">Слои (Layers)</span>
+          <button id="btn-add-layer" class="btn btn-sm" title="Новый пустой слой">+ Новый слой</button>
+        </div>
+        <div id="layers-list" class="layers-container">
+          <!-- Dynamically populated layers -->
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+          💡 <b>Совет:</b> Вставляйте фото из буфера (<code>Ctrl+V</code>) или выбирайте пачкой через иконку 📁 — они автоматически распределятся по новым слоям.
+        </div>
+      </div>
+
+      <!-- Brush / Mask Tool Settings -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <span class="panel-title">Настройки инструмента</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Размер кисти / ластика / маски:</label>
+          <div class="slider-group">
+            <input type="range" id="brush-size" min="2" max="120" value="25">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Цвет кисти:</label>
+          <input type="color" id="brush-color" value="#000000" style="width: 100%; height: 32px; border: none; cursor: pointer; border-radius: 4px;">
+        </div>
+      </div>
+
+      <!-- Basic Adjustments -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <span class="panel-title">Коррекция (Adjustments)</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Яркость (Brightness):</label>
+          <input type="range" id="adj-brightness" min="0.2" max="2.0" step="0.05" value="1.0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Контраст (Contrast):</label>
+          <input type="range" id="adj-contrast" min="0.2" max="2.0" step="0.05" value="1.0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Насыщенность (Saturation):</label>
+          <input type="range" id="adj-saturation" min="0.0" max="2.0" step="0.05" value="1.0">
+        </div>
+        <button id="btn-apply-adj" class="btn btn-sm" style="width: 100%;">Применить к активному слою</button>
+      </div>
+
+      <!-- AI Prompt & Generation Panel -->
+      <div class="panel-section" style="flex: 1;">
+        <div class="panel-header">
+          <span class="panel-title">Нейросетевая обработка</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Текстовый запрос (Prompt):</label>
+          <textarea id="ai-prompt" class="form-control" placeholder="например: futuristic cyberpunk helmet, glowing neon lights, 8k"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Негативный запрос (Negative prompt):</label>
+          <input type="text" id="ai-neg-prompt" class="form-control" placeholder="low quality, blurry, artifacts">
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="flex: 1;">
+            <label class="form-label">Шагов (Steps):</label>
+            <input type="number" id="ai-steps" class="form-control" value="20" min="1" max="50">
+          </div>
+          <div style="flex: 1;">
+            <label class="form-label">Seed (-1 = Random):</label>
+            <input type="number" id="ai-seed" class="form-control" value="-1">
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <button id="btn-run-inpaint" class="btn btn-primary" style="justify-content: center;">
+            🎭 Инпейнтинг по маске (FLUX Fill / SD)
+          </button>
+          <button id="btn-run-edit" class="btn" style="justify-content: center;">
+            ✏️ Редактировать по промпту (Kontext)
+          </button>
+          <button id="btn-run-txt2img" class="btn" style="justify-content: center;">
+            ✨ Создать новую картинку (Txt2Img)
+          </button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Bottom Status Bar -->
+  <footer class="status-bar">
+    <div class="status-left">
+      <span id="main-spinner" class="spinner" style="display: none;"></span>
+      <span id="status-text">Готов к работе. Поддерживается вставка Ctrl+V и перетаскивание изображений.</span>
+    </div>
+    <div class="status-right">
+      <span>Модели: <code>/models/models.json</code></span>
+      <span>Вывод: <code>/output/</code></span>
+      <span>Лог: <code>/logs/log.txt</code> (Loguru)</span>
+    </div>
+  </footer>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

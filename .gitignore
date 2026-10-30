@@ -1,0 +1,39 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Model weights (large binaries, kept locally)
+models/*.safetensors
+models/*.gguf
+models/*.pth
+models/*.bin
+models/*.onnx
+!models/models.json
+!models/README.md
+
+# Application output
+output/*
+!output/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# PyInstaller build artifacts
+installer/build/
+installer/dist/
+installer/*.spec
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
