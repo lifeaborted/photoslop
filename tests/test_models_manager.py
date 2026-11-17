@@ -20,7 +20,9 @@ def test_models_manager_loading():
     assert "txt2img" in active
 
 def test_dynamic_switching():
-    mm = ModelsManager(config_path=MODELS_CONFIG_PATH, models_dir=MODELS_DIR)
+    benchmark_config = MODELS_DIR / "models_benchmark.json"
+    cfg = benchmark_config if benchmark_config.exists() else MODELS_CONFIG_PATH
+    mm = ModelsManager(config_path=cfg, models_dir=MODELS_DIR)
     
     # Switch inpaint model
     res = mm.switch_model("inpaint", "flux1-fill-dev-q2")
