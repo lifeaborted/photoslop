@@ -39,3 +39,10 @@ installer/*.spec
 .idea/
 .DS_Store
 Thumbs.db
+
+# Assignments, Documentation & Local Test Suites
+*.pdf
+docs/
+tests/
+model URL.txt
+benchmark_results.json
