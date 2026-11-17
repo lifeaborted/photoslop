@@ -15,6 +15,12 @@ class RemoveBackgroundRequest(BaseModel):
     model_id: Optional[str] = None
 
 
+class RemoveObjectRequest(BaseModel):
+    image_data: str
+    mask_data: str
+    model_id: Optional[str] = None
+
+
 class InpaintRequest(BaseModel):
     image_data: str
     mask_data: str
@@ -79,6 +85,45 @@ def remove_background(payload: RemoveBackgroundRequest):
         }
     except Exception as e:
         logger.error(f"Error in remove-background: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/remove-object")
+def remove_object_from_image(payload: RemoveObjectRequest):
+    """Erases masked object cleanly without prompt (LaMa / IOPaint / Content-Aware)."""
+    start_time = time.time()
+    active_id = payload.model_id or models_manager.active_models.get("object_removal", "lama-cleaner-onnx")
+    model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
+    model_name = model_info.get("name", active_id)
+
+    try:
+        input_img = data_uri_to_pil(payload.image_data)
+        mask_img = data_uri_to_pil(payload.mask_data)
+
+        with track_model_execution(
+            category="object_removal",
+            model_id=active_id,
+            model_name=model_name,
+            params={"size": f"{input_img.width}x{input_img.height}"}
+        ) as tracker:
+            pipeline = pipeline_manager.get_pipeline("object_removal", active_id)
+            result_img = pipeline.remove_object(input_img, mask_img)
+            tracker.set_result(f"{result_img.width}x{result_img.height} PNG")
+
+        result_uri = pil_to_data_uri(result_img, format="PNG")
+        elapsed = round(time.time() - start_time, 3)
+
+        return {
+            "status": "success",
+            "model_id": active_id,
+            "model_name": model_name,
+            "elapsed_seconds": elapsed,
+            "width": result_img.width,
+            "height": result_img.height,
+            "data_uri": result_uri
+        }
+    except Exception as e:
+        logger.error(f"Error in remove-object: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

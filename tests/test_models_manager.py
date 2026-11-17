@@ -27,10 +27,10 @@ def test_dynamic_switching():
     assert res["status"] == "success"
     assert mm.active_models["inpaint"] == "flux1-fill-dev-q2"
 
-    # Switch back to SD 1.5
-    res2 = mm.switch_model("inpaint", "sd15-inpainting-fp16")
+    # Switch back to SDXL Inpaint
+    res2 = mm.switch_model("inpaint", "sdxl-inpaint-0.1")
     assert res2["status"] == "success"
-    assert mm.active_models["inpaint"] == "sd15-inpainting-fp16"
+    assert mm.active_models["inpaint"] == "sdxl-inpaint-0.1"
 
 def test_invalid_model_switch():
     mm = ModelsManager(config_path=MODELS_CONFIG_PATH, models_dir=MODELS_DIR)

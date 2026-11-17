@@ -110,7 +110,7 @@ class PipelineManager:
     def _create_pipeline_instance(self, category: str, model_info: Dict[str, Any]) -> BasePipeline:
         if category == "txt2img":
             return TextToImagePipeline(model_info)
-        elif category in ("inpaint", "edit"):
+        elif category in ("inpaint", "edit", "object_removal"):
             return InpaintPipeline(model_info)
         elif category == "background_removal":
             return BackgroundRemovalPipeline(model_info)

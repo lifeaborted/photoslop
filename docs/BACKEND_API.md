@@ -323,22 +323,48 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
 ```
 
 #### `POST /api/generation/remove-background`
-Удаление фона и выделение объекта (возвращает RGBA с прозрачным альфа-каналом).
+Удаление фона и выделение объекта (возвращает RGBA с прозрачным альфа-каналом). Поддерживает `bria-rmbg-2.0` (BiRefNet), `bria-rmbg-1.4` и `rembg-u2net`.
 
 - **Тело запроса (JSON):**
 ```json
 {
   "image_data": "data:image/png;base64,...",
-  "model_id": "bria-rmbg-1.4"
+  "model_id": "bria-rmbg-2.0"
 }
 ```
 - **Ответ (200 OK):**
 ```json
 {
   "status": "success",
-  "model_id": "bria-rmbg-1.4",
-  "model_name": "BRIA RMBG-1.4",
-  "elapsed_seconds": 0.82,
+  "model_id": "bria-rmbg-2.0",
+  "model_name": "BRIA RMBG-2.0 (BiRefNet SOTA)",
+  "elapsed_seconds": 0.35,
+  "width": 512,
+  "height": 512,
+  "data_uri": "data:image/png;base64,..."
+}
+```
+
+#### `POST /api/generation/remove-object`
+Бесшовное стирание нежелательных объектов по маске без текстового промпта с восстановлением текстуры фона (LaMa / IOPaint / Content-Aware).
+
+- **Тело запроса (JSON):**
+```json
+{
+  "image_data": "data:image/png;base64,...",
+  "mask_data": "data:image/png;base64,...",
+  "model_id": "lama-cleaner-onnx"
+}
+```
+*(Маска `mask_data` — черно-белое изображение, где белый цвет (255) указывает удаляемый объект).*
+
+- **Ответ (200 OK):**
+```json
+{
+  "status": "success",
+  "model_id": "lama-cleaner-onnx",
+  "model_name": "LaMa (Fast Fourier Convolutions / Clean Eraser)",
+  "elapsed_seconds": 0.08,
   "width": 512,
   "height": 512,
   "data_uri": "data:image/png;base64,..."

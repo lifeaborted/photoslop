@@ -12,10 +12,11 @@ class ModelsManager:
         self.config_path = config_path
         self.models_dir = models_dir
         self.active_models: Dict[str, str] = {
-            "inpaint": "sd15-inpainting-fp16",
+            "inpaint": "flux1-fill-dev-q2",
             "edit": "flux1-kontext-q2",
             "txt2img": "sdxl-turbo-int8",
-            "background_removal": "bria-rmbg-1.4"
+            "background_removal": "bria-rmbg-2.0",
+            "object_removal": "lama-cleaner-onnx"
         }
         self.cached_config: Dict[str, Any] = {}
         self.flattened_models: List[Dict[str, Any]] = []
