@@ -124,7 +124,7 @@
         "variant": "fp16",
         "disk_gb": 2.0,
         "est_vram_gb": 3.2,
-        "default_steps": 15,
+        "default_steps": 10,
         "default_guidance": 7.5,
         "champion": true
       }

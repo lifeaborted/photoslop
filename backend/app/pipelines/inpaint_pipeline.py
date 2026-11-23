@@ -76,8 +76,12 @@ class InpaintPipeline(BasePipeline):
                 if variant == "fp16" and not has_fp16:
                     variant = None
 
+                is_sdxl = "XL" in class_name or "sdxl" in model_id
+                # Turing GPUs (GTX 1660 Ti) run SD1.5 / SD2.0 / Pix2Pix natively in FP32 faster & without NaN
+                runtime_dtype = torch.float16 if is_sdxl else torch.float32
+
                 load_kwargs: Dict[str, Any] = {
-                    "torch_dtype": torch.float16,
+                    "torch_dtype": runtime_dtype,
                     "variant": variant,
                 }
                 if "safety_checker" in idx_data:
@@ -90,7 +94,10 @@ class InpaintPipeline(BasePipeline):
                     or "pix2pix" in model_id
                 )
                 loader_cls = StableDiffusionInstructPix2PixPipeline if is_edit_model else AutoPipelineForInpainting
-                logger.info(f"Loading {loader_cls.__name__} from {model_path} (variant={variant}, class={class_name})")
+                logger.info(
+                    f"Loading {loader_cls.__name__} from {model_path} "
+                    f"(variant={variant}, runtime_dtype={runtime_dtype}, class={class_name})"
+                )
                 pipe = loader_cls.from_pretrained(str(model_path), **load_kwargs)
 
                 if hasattr(pipe, "enable_attention_slicing"):
@@ -100,18 +107,19 @@ class InpaintPipeline(BasePipeline):
                 elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_slicing"):
                     pipe.vae.enable_slicing()
 
-                # VAE FP16 overflow guard for ALL Diffusers inpaint models on Turing GPUs (GTX 1660 Ti)
-                if hasattr(pipe, "vae"):
+                if is_sdxl and hasattr(pipe, "vae"):
                     pipe.vae.to(torch.float32)
-                    orig_decode = pipe.vae.decode
-                    pipe.vae.decode = lambda z, *a, **kw: orig_decode(z.to(torch.float32), *a, **kw)
 
-                try:
-                    pipe.to("cuda")
-                except torch.cuda.OutOfMemoryError:
-                    logger.warning(f"OOM placing [{model_id}] on CUDA; switching to enable_model_cpu_offload()")
-                    torch.cuda.empty_cache()
+                # Keep peak VRAM <= 4.3 GB on 6 GB cards when executing in FP32
+                if runtime_dtype == torch.float32:
                     pipe.enable_model_cpu_offload()
+                else:
+                    try:
+                        pipe.to("cuda")
+                    except torch.cuda.OutOfMemoryError:
+                        logger.warning(f"OOM placing [{model_id}] on CUDA; switching to enable_model_cpu_offload()")
+                        torch.cuda.empty_cache()
+                        pipe.enable_model_cpu_offload()
 
                 self.pipe = pipe
                 self.using_fallback = False
@@ -277,7 +285,7 @@ class InpaintPipeline(BasePipeline):
         prompt: str,
         strength: float = 0.5,
         seed: Optional[int] = None,
-        steps: int = 15,
+        steps: Optional[int] = None,
     ) -> Image.Image:
         """Applies instruction-guided whole-image editing via InstructPix2Pix (or PIL fallback)."""
         start_time = time.time()
@@ -296,7 +304,7 @@ class InpaintPipeline(BasePipeline):
             h_inf = min(512, max(64, (img.height // 8) * 8))
             inp_img = img.resize((w_inf, h_inf), Image.Resampling.LANCZOS)
 
-            eff_steps = int(self.model_info.get("default_steps", steps))
+            eff_steps = steps if (steps is not None and steps > 0) else int(self.model_info.get("default_steps", 10))
             guidance_scale = float(self.model_info.get("default_guidance", 7.5))
             image_guidance = max(1.0, 2.0 - float(strength))
 

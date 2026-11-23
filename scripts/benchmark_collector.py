@@ -464,9 +464,10 @@ def main():
         ])
 
     if args.model:
-        stage_tasks = [t for t in stage_tasks if t["model_id"] == args.model]
+        wanted = {m.strip() for m in args.model.split(",") if m.strip()}
+        stage_tasks = [t for t in stage_tasks if t["model_id"] in wanted]
         if not stage_tasks:
-            raise ValueError(f"Model '{args.model}' not found in stage '{args.stage}'")
+            raise ValueError(f"Model(s) '{args.model}' not found in stage '{args.stage}'")
 
     benchmark_records = []
     for t in stage_tasks:
