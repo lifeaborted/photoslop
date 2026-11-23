@@ -6,6 +6,7 @@ class BasePipeline(ABC):
     def __init__(self, model_info: Dict[str, Any]):
         self.model_info = model_info
         self.is_loaded = False
+        self.using_fallback = False
 
     @abstractmethod
     def load(self) -> bool:

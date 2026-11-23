@@ -18,7 +18,12 @@ class PipelineManager:
     def __init__(self):
         self._active_pipelines: Dict[str, BasePipeline] = {}
 
-    def get_pipeline(self, category: str, model_id: Optional[str] = None) -> BasePipeline:
+    def get_pipeline(
+        self,
+        category: str,
+        model_id: Optional[str] = None,
+        model_info: Optional[Dict[str, Any]] = None,
+    ) -> BasePipeline:
         """
         Retrieves or initializes a warm loaded pipeline for the given category.
         If the model is already loaded and ready in memory, returns it immediately.
@@ -34,7 +39,8 @@ class PipelineManager:
             return existing
 
         # 2. Get model definition
-        model_info = models_manager.get_model_by_id(model_id)
+        if model_info is None:
+            model_info = models_manager.get_model_by_id(model_id)
         if not model_info:
             model_info = {"id": model_id, "name": model_id, "category": category}
 

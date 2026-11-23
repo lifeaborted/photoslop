@@ -19,6 +19,7 @@ models/*.pth
 models/*.bin
 models/*.onnx
 !models/models.json
+!models/models_benchmark.json
 !models/README.md
 
 # Application output
@@ -45,4 +46,6 @@ Thumbs.db
 docs/
 tests/
 model URL.txt
-benchmark_results.json
+benchmark_results*.json
+benchmark_outputs/
+data/

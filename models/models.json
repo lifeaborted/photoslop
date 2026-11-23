@@ -3,29 +3,37 @@
     "txt2img": [
       {
         "id": "sdxl-turbo-int8",
-        "name": "SDXL Turbo INT8",
-        "filename": "sdxl-turbo-torch-int8"
+        "name": "SDXL Turbo INT8 (TorchAO)",
+        "filename": "sdxl-turbo-torch-int8",
+        "repo_id": "imgailab/sdxl-turbo-torch-int8",
+        "default_steps": 1,
+        "default_guidance": 0.0
       }
     ],
     "background_removal": [
       {
         "id": "bria-rmbg-2.0",
-        "name": "BRIA RMBG-2.0 (BiRefNet SOTA)",
-        "filename": "model.safetensors"
+        "name": "BRIA RMBG-2.0 (ONNX / BiRefNet SOTA)",
+        "filename": "rembg/models/bria-rmbg/bria-rmbg.onnx",
+        "rembg_model": "bria-rmbg"
       }
     ],
     "object_removal": [
       {
         "id": "lama-cleaner-onnx",
-        "name": "LaMa (Clean Object Eraser)",
-        "filename": "lama.onnx"
+        "name": "LaMa (Fast Fourier Object Eraser)",
+        "filename": "lama_fp32.onnx",
+        "repo_id": "Carve/LaMa-ONNX"
       }
     ],
     "inpaint": [
       {
-        "id": "flux1-fill-dev-q2",
-        "name": "FLUX.1 Fill Dev (GGUF Q2_K)",
-        "filename": "flux1-fill-dev-q2_k.gguf"
+        "id": "dreamshaper-8-inpainting",
+        "name": "DreamShaper 8 Inpainting (FP16)",
+        "filename": "dreamshaper-8-inpainting",
+        "repo_id": "Lykon/dreamshaper-8-inpainting",
+        "default_steps": 20,
+        "default_guidance": 7.5
       }
     ]
   }

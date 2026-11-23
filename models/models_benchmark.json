@@ -3,66 +3,116 @@
     "txt2img": [
       {
         "id": "sdxl-turbo-int8",
-        "name": "SDXL Turbo INT8 (1-Step / Fast)",
-        "filename": "sdxl-turbo-torch-int8"
+        "name": "SDXL Turbo INT8 (TorchAO, 1-step)",
+        "filename": "sdxl-turbo-torch-int8",
+        "repo_id": "imgailab/sdxl-turbo-torch-int8",
+        "disk_gb": 4.1,
+        "est_vram_gb": 4.7,
+        "default_steps": 1,
+        "default_guidance": 0.0,
+        "champion": true
       },
       {
-        "id": "sdxl-base-1.0",
-        "name": "SDXL Base 1.0 (FP16)",
-        "filename": "sd_xl_base_1.0.safetensors"
+        "id": "sd-turbo-fp16",
+        "name": "SD-Turbo FP16 (ADD 0.86B, 4-step)",
+        "filename": "sd-turbo-fp16",
+        "repo_id": "stabilityai/sd-turbo",
+        "variant": "fp16",
+        "disk_gb": 2.5,
+        "est_vram_gb": 2.8,
+        "default_steps": 4,
+        "default_guidance": 0.0,
+        "champion": false
+      },
+      {
+        "id": "segmind-ssd-1b",
+        "name": "Segmind SSD-1B FP16 (Distilled SDXL 1.3B)",
+        "filename": "segmind-ssd-1b",
+        "repo_id": "segmind/SSD-1B",
+        "variant": "fp16",
+        "disk_gb": 4.3,
+        "est_vram_gb": 5.1,
+        "default_steps": 20,
+        "default_guidance": 7.5,
+        "champion": false
       }
     ],
     "background_removal": [
       {
         "id": "bria-rmbg-2.0",
-        "name": "BRIA RMBG-2.0 (BiRefNet SOTA)",
-        "filename": "model.safetensors"
+        "name": "BRIA RMBG-2.0 (ONNX / BiRefNet SOTA)",
+        "filename": "rembg/models/bria-rmbg/bria-rmbg.onnx",
+        "rembg_model": "bria-rmbg",
+        "disk_gb": 0.97,
+        "est_vram_gb": 0.0,
+        "champion": true
       },
       {
-        "id": "bria-rmbg-1.4",
-        "name": "BRIA RMBG-1.4 (ONNX / CPU Fallback)",
-        "filename": "model.onnx"
+        "id": "birefnet-general-lite",
+        "name": "BiRefNet General Lite (ONNX)",
+        "filename": "rembg/models/birefnet-general-lite/birefnet-general-lite.onnx",
+        "rembg_model": "birefnet-general-lite",
+        "disk_gb": 0.21,
+        "est_vram_gb": 0.0,
+        "champion": false
       },
       {
         "id": "rembg-u2net",
-        "name": "U2-Net / rembg (Lightweight CPU)",
-        "filename": "u2net.onnx"
-      }
-    ],
-    "inpaint": [
-      {
-        "id": "flux1-fill-dev-q2",
-        "name": "FLUX.1 Fill Dev (GGUF Q2_K)",
-        "filename": "flux1-fill-dev-q2_k.gguf"
-      },
-      {
-        "id": "sdxl-inpaint-0.1",
-        "name": "SDXL Inpainting 0.1 (FP16)",
-        "filename": "sdxl-inpaint-0.1.safetensors"
-      },
-      {
-        "id": "realvisxl-v4-inpaint",
-        "name": "RealVisXL V4.0 Inpainting",
-        "filename": "realvisxl-v4-inpaint.safetensors"
+        "name": "U2-Net / rembg (Lightweight CPU Baseline)",
+        "filename": "rembg/models/u2net/u2net.onnx",
+        "rembg_model": "u2net",
+        "disk_gb": 0.18,
+        "est_vram_gb": 0.0,
+        "champion": false
       }
     ],
     "object_removal": [
       {
         "id": "lama-cleaner-onnx",
-        "name": "LaMa (Fast Fourier Convolutions / Clean Eraser)",
-        "filename": "lama.onnx"
+        "name": "LaMa FP32 ONNX (Fast Fourier Convolutions)",
+        "filename": "lama_fp32.onnx",
+        "repo_id": "Carve/LaMa-ONNX",
+        "disk_gb": 0.20,
+        "est_vram_gb": 0.0,
+        "champion": true
       }
     ],
-    "edit": [
+    "inpaint": [
       {
-        "id": "flux1-kontext-q2",
-        "name": "FLUX.1 Kontext (GGUF Q2_K)",
-        "filename": "flux1-kontext-q2_k.gguf"
+        "id": "dreamshaper-8-inpainting",
+        "name": "DreamShaper 8 Inpainting (FP16)",
+        "filename": "dreamshaper-8-inpainting",
+        "repo_id": "Lykon/dreamshaper-8-inpainting",
+        "variant": "fp16",
+        "disk_gb": 2.0,
+        "est_vram_gb": 3.0,
+        "default_steps": 20,
+        "default_guidance": 7.5,
+        "champion": true
       },
       {
-        "id": "cosxl-edit",
-        "name": "CosXL Edit (SDXL Instruction Tuning)",
-        "filename": "cosxl_edit.safetensors"
+        "id": "sd2-inpainting-fp16",
+        "name": "Stable Diffusion 2.0 Inpainting (FP16, OpenCLIP)",
+        "filename": "sd2-inpainting-fp16",
+        "repo_id": "sd2-community/stable-diffusion-2-inpainting",
+        "variant": "fp16",
+        "disk_gb": 2.5,
+        "est_vram_gb": 3.5,
+        "default_steps": 20,
+        "default_guidance": 7.5,
+        "champion": false
+      },
+      {
+        "id": "sd15-inpainting-fp16",
+        "name": "Stable Diffusion 1.5 Inpainting (FP16 Baseline)",
+        "filename": "sd15-inpainting-fp16",
+        "repo_id": "stable-diffusion-v1-5/stable-diffusion-inpainting",
+        "variant": "fp16",
+        "disk_gb": 2.0,
+        "est_vram_gb": 2.9,
+        "default_steps": 20,
+        "default_guidance": 7.5,
+        "champion": false
       }
     ]
   }

@@ -1,3 +1,5 @@
+import gc
+import json
 import time
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -7,9 +9,14 @@ from backend.app.logger import logger
 from backend.app.config import MODELS_DIR
 from backend.app.pipelines.base import BasePipeline
 
+_TORCHAO_PATCHED = False
+
 
 def _apply_torchao_patches():
-    """Applies compatibility patches for TorchAO, PyTorch 2.6+, and GTX 1660 Ti."""
+    """Applies compatibility patches for TorchAO, PyTorch 2.6+, and GTX 1660 Ti (Turing)."""
+    global _TORCHAO_PATCHED
+    if _TORCHAO_PATCHED:
+        return
     try:
         import torch
         orig_load = torch.load
@@ -54,17 +61,19 @@ def _apply_torchao_patches():
             if "fp_act_int8" in k.__name__:
                 aqt_ops._AQT_QLINEAR_DISPATCH_TABLE[k] = safe_linear_fp_act_int8_weight_impl
 
+        _TORCHAO_PATCHED = True
         logger.info("TorchAO compatibility patches & FP32 accumulation applied successfully")
     except Exception as e:
         logger.warning(f"Could not apply TorchAO patches: {e}")
 
 
 class TextToImagePipeline(BasePipeline):
-    """Pipeline for text-to-image generation (SDXL Turbo INT8, SD 1.5, FLUX)."""
+    """Pipeline for text-to-image generation (SDXL Turbo INT8, SD-Turbo FP16, Segmind SSD-1B)."""
 
     def __init__(self, model_info: Dict[str, Any]):
         super().__init__(model_info)
         self.pipe = None
+        self.device = "cpu"
 
     def load(self) -> bool:
         model_id = self.model_info.get("id", "")
@@ -73,43 +82,77 @@ class TextToImagePipeline(BasePipeline):
         logger.info(f"Loading txt2img model: {model_name} [{model_id}]")
 
         model_path = MODELS_DIR / filename if filename else MODELS_DIR / model_id
-        if not model_path.exists():
-            # Check if sdxl-turbo-torch-int8 directory exists
-            alt_path = MODELS_DIR / "sdxl-turbo-torch-int8"
-            if alt_path.exists():
-                model_path = alt_path
 
         if model_path.exists() and (model_path / "model_index.json").exists():
             try:
                 import torch
-                if torch.cuda.is_available():
+                if not torch.cuda.is_available():
+                    logger.warning("CUDA is not available; txt2img will fall back to procedural mode.")
+                    self.using_fallback = True
+                    self.is_loaded = True
+                    return True
+
+                is_int8 = "int8" in model_id or (model_path / "quantization_info.json").exists()
+                if is_int8:
                     _apply_torchao_patches()
-                    from diffusers import AutoPipelineForText2Image
 
-                    logger.info(f"Loading Diffusers pipeline from: {model_path}")
-                    pipe = AutoPipelineForText2Image.from_pretrained(
-                        str(model_path),
-                        torch_dtype=torch.float16,
-                        variant=None
-                    )
-                    pipe.to("cuda")
+                from diffusers import AutoPipelineForText2Image
 
-                    # VAE FP16 overflow guard
+                idx_data = json.loads((model_path / "model_index.json").read_text(encoding="utf-8"))
+                class_name = idx_data.get("_class_name", "")
+
+                # Auto-detect fp16 variant files
+                has_fp16 = (model_path / "unet" / "diffusion_pytorch_model.fp16.safetensors").exists()
+                variant = self.model_info.get("variant") or ("fp16" if has_fp16 else None)
+                if variant == "fp16" and not has_fp16:
+                    variant = None
+
+                load_kwargs: Dict[str, Any] = {
+                    "torch_dtype": torch.float16,
+                    "variant": variant,
+                }
+                if "safety_checker" in idx_data:
+                    load_kwargs["safety_checker"] = None
+                    load_kwargs["requires_safety_checker"] = False
+
+                logger.info(f"Loading Diffusers txt2img from: {model_path} (variant={variant}, class={class_name})")
+                pipe = AutoPipelineForText2Image.from_pretrained(str(model_path), **load_kwargs)
+
+                # Memory optimizations for 6GB VRAM
+                if hasattr(pipe, "enable_attention_slicing"):
+                    pipe.enable_attention_slicing()
+                if hasattr(pipe, "enable_vae_slicing"):
+                    pipe.enable_vae_slicing()
+
+                # VAE FP16 overflow guard for SDXL / SSD-1B on Turing GPUs (GTX 1660 Ti)
+                is_sdxl_family = "XL" in class_name or "sdxl" in model_id or "ssd-1b" in model_id
+                if is_sdxl_family and hasattr(pipe, "vae"):
                     pipe.vae.to(torch.float32)
                     orig_decode = pipe.vae.decode
                     pipe.vae.decode = lambda z, *a, **kw: orig_decode(z.to(torch.float32), *a, **kw)
 
-                    self.pipe = pipe
-                    self.is_loaded = True
-                    logger.info(f"Diffusers txt2img pipeline loaded on {torch.cuda.get_device_name(0)}")
-                    return True
+                try:
+                    pipe.to("cuda")
+                    self.device = "cuda"
+                except torch.cuda.OutOfMemoryError:
+                    logger.warning(f"OOM placing [{model_id}] fully on CUDA; switching to enable_model_cpu_offload()")
+                    torch.cuda.empty_cache()
+                    pipe.enable_model_cpu_offload()
+                    self.device = "cuda"
+
+                self.pipe = pipe
+                self.using_fallback = False
+                self.is_loaded = True
+                logger.info(f"Diffusers txt2img pipeline [{model_id}] loaded on {torch.cuda.get_device_name(0)}")
+                return True
             except Exception as e:
                 logger.error(f"Failed to load Diffusers model from {model_path}: {e}")
                 raise
 
-        # Fallback to simulated fast pipeline
+        # Weights not present locally -> explicit fallback flag
+        self.using_fallback = True
         self.is_loaded = True
-        logger.info(f"Loaded simulated txt2img pipeline for [{model_id}]")
+        logger.warning(f"Weights not found at {model_path}; txt2img [{model_id}] running in FALLBACK mode.")
         return True
 
     def unload(self) -> bool:
@@ -117,6 +160,7 @@ class TextToImagePipeline(BasePipeline):
         if self.pipe is not None:
             del self.pipe
             self.pipe = None
+            gc.collect()
             try:
                 import torch
                 if torch.cuda.is_available():
@@ -124,6 +168,7 @@ class TextToImagePipeline(BasePipeline):
             except Exception:
                 pass
         self.is_loaded = False
+        self.using_fallback = False
         return True
 
     def generate(
@@ -132,13 +177,23 @@ class TextToImagePipeline(BasePipeline):
         negative_prompt: str = "",
         width: int = 512,
         height: int = 512,
-        steps: int = 1,
-        seed: Optional[int] = None
+        steps: Optional[int] = None,
+        seed: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
     ) -> Image.Image:
         start_time = time.time()
+        model_id = self.model_info.get("id", "")
+
+        eff_steps = steps if (steps is not None and steps > 0) else int(self.model_info.get("default_steps", 1))
+        if guidance_scale is None:
+            default_g = 0.0 if "turbo" in model_id else 7.5
+            eff_guidance = float(self.model_info.get("default_guidance", default_g))
+        else:
+            eff_guidance = float(guidance_scale)
+
         logger.info(
-            f"Txt2Img generating: '{prompt}' [{width}x{height}, steps={steps}, seed={seed}] "
-            f"using [{self.model_info.get('id')}]"
+            f"Txt2Img generating: '{prompt[:60]}' [{width}x{height}, steps={eff_steps}, "
+            f"guidance={eff_guidance}, seed={seed}] using [{model_id}]"
         )
 
         if self.pipe is not None:
@@ -147,25 +202,27 @@ class TextToImagePipeline(BasePipeline):
             if seed is not None:
                 generator.manual_seed(seed)
 
-            # Ensure width and height are divisible by 8 for SDXL latents
             w_div = max(64, (width // 8) * 8)
             h_div = max(64, (height // 8) * 8)
 
-            image = self.pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt if negative_prompt else None,
-                width=w_div,
-                height=h_div,
-                num_inference_steps=max(1, steps),
-                guidance_scale=0.0,
-                generator=generator
-            ).images[0]
+            call_kwargs: Dict[str, Any] = {
+                "prompt": prompt,
+                "width": w_div,
+                "height": h_div,
+                "num_inference_steps": max(1, eff_steps),
+                "guidance_scale": eff_guidance,
+                "generator": generator,
+            }
+            if negative_prompt and eff_guidance > 1.0:
+                call_kwargs["negative_prompt"] = negative_prompt
+
+            image = self.pipe(**call_kwargs).images[0]
 
             elapsed = time.time() - start_time
             logger.info(f"Txt2Img Diffusers generation completed in {elapsed:.3f}s")
             return image
 
-        # Built-in generator fallback with visual abstract gradient art based on prompt seed
+        # Built-in fallback when weights are not downloaded
         if seed is None:
             seed = int(time.time() * 1000) % 1000000
 
@@ -184,12 +241,11 @@ class TextToImagePipeline(BasePipeline):
         rgb = np.stack([r, g, b], axis=-1).astype(np.uint8)
         img = Image.fromarray(rgb).filter(ImageFilter.GaussianBlur(radius=10))
 
-        # Render decorative prompt overlay
         draw = ImageDraw.Draw(img)
         draw.rectangle([20, height - 70, width - 20, height - 20], fill=(0, 0, 0, 180))
         draw.text((30, height - 55), f"Generated: {prompt[:40]}...", fill=(255, 255, 255))
         draw.text((30, height - 38), f"Model: {self.model_info.get('name')} | Seed: {seed}", fill=(200, 200, 200))
 
         elapsed = time.time() - start_time
-        logger.info(f"Txt2Img procedural finished in {elapsed:.3f}s")
+        logger.info(f"Txt2Img procedural fallback finished in {elapsed:.3f}s")
         return img
