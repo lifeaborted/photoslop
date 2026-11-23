@@ -123,10 +123,11 @@ class TextToImagePipeline(BasePipeline):
                     pipe.enable_attention_slicing()
                 if hasattr(pipe, "enable_vae_slicing"):
                     pipe.enable_vae_slicing()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_slicing"):
+                    pipe.vae.enable_slicing()
 
-                # VAE FP16 overflow guard for SDXL / SSD-1B on Turing GPUs (GTX 1660 Ti)
-                is_sdxl_family = "XL" in class_name or "sdxl" in model_id or "ssd-1b" in model_id
-                if is_sdxl_family and hasattr(pipe, "vae"):
+                # VAE FP16 overflow guard for ALL Diffusers models on Turing GPUs (GTX 1660 Ti)
+                if hasattr(pipe, "vae"):
                     pipe.vae.to(torch.float32)
                     orig_decode = pipe.vae.decode
                     pipe.vae.decode = lambda z, *a, **kw: orig_decode(z.to(torch.float32), *a, **kw)

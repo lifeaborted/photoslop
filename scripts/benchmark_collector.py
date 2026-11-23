@@ -399,6 +399,7 @@ def _merge_results(out_path: Path, new_records: List[Dict[str, Any]], hw_info: D
 def main():
     parser = argparse.ArgumentParser(description="PepeShop Benchmark & Telemetry Suite")
     parser.add_argument("--stage", type=str, choices=["bg", "txt2img", "inpaint", "all"], default="bg", help="Stage to test")
+    parser.add_argument("--model", type=str, default=None, help="Optional single model_id filter")
     parser.add_argument("--samples", type=int, default=5, help="Number of validation samples per model")
     parser.add_argument("--output", type=str, default=str(RESULTS_FILE), help="Output JSON path")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite JSON instead of merging stages")
@@ -434,6 +435,11 @@ def main():
             {"category": "inpaint", "model_id": "dreamshaper-8-inpainting"},
             {"category": "inpaint", "model_id": "sd2-inpainting-fp16"},
         ])
+
+    if args.model:
+        stage_tasks = [t for t in stage_tasks if t["model_id"] == args.model]
+        if not stage_tasks:
+            raise ValueError(f"Model '{args.model}' not found in stage '{args.stage}'")
 
     benchmark_records = []
     for t in stage_tasks:

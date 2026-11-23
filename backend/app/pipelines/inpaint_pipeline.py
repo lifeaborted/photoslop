@@ -91,8 +91,11 @@ class InpaintPipeline(BasePipeline):
                     pipe.enable_attention_slicing()
                 if hasattr(pipe, "enable_vae_slicing"):
                     pipe.enable_vae_slicing()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_slicing"):
+                    pipe.vae.enable_slicing()
 
-                if ("XL" in class_name or "sdxl" in model_id) and hasattr(pipe, "vae"):
+                # VAE FP16 overflow guard for ALL Diffusers inpaint models on Turing GPUs (GTX 1660 Ti)
+                if hasattr(pipe, "vae"):
                     pipe.vae.to(torch.float32)
                     orig_decode = pipe.vae.decode
                     pipe.vae.decode = lambda z, *a, **kw: orig_decode(z.to(torch.float32), *a, **kw)
