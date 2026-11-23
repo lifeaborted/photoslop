@@ -196,7 +196,7 @@ def run_benchmark_for_category(
                 bious.append(compute_boundary_iou(pred_alpha, gt))
                 sample_count += 1
 
-                if idx < 2:
+                if idx < 3:
                     save_p = out_subfolder / f"sample_{idx + 1}.png"
                     res.save(save_p)
                     saved_examples.append(str(save_p.relative_to(PROJECT_ROOT)).replace("\\", "/"))
@@ -229,7 +229,7 @@ def run_benchmark_for_category(
                 sample_count += 1
                 pending_clip_pairs.append((img, p["prompt"]))
 
-                if idx < 2:
+                if idx < 3:
                     save_p = out_subfolder / f"sample_{p.get('id', idx + 1)}.png"
                     img.save(save_p)
                     saved_examples.append(str(save_p.relative_to(PROJECT_ROOT)).replace("\\", "/"))
@@ -260,7 +260,7 @@ def run_benchmark_for_category(
                 ssims.append(compute_ssim(orig, res))
                 sample_count += 1
 
-                if idx < 2:
+                if idx < 3:
                     save_p = out_subfolder / f"erased_{idx + 1}.png"
                     res.save(save_p)
                     saved_examples.append(str(save_p.relative_to(PROJECT_ROOT)).replace("\\", "/"))
@@ -297,7 +297,7 @@ def run_benchmark_for_category(
                 pending_clip_pairs.append((res, prompt))
                 psnrs.append(compute_psnr(orig, res))
 
-                if idx < 2:
+                if idx < 3:
                     save_p = out_subfolder / f"inpaint_{idx + 1}.png"
                     res.save(save_p)
                     saved_examples.append(str(save_p.relative_to(PROJECT_ROOT)).replace("\\", "/"))
