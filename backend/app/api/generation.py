@@ -54,7 +54,7 @@ class TextToImageRequest(BaseModel):
 def remove_background(payload: RemoveBackgroundRequest):
     """Executes AI background removal with the active background model."""
     start_time = time.time()
-    active_id = payload.model_id or models_manager.active_models.get("background_removal", "bria-rmbg-1.4")
+    active_id = payload.model_id or models_manager.active_models.get("background_removal", "birefnet-general-lite")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
     model_name = model_info.get("name", active_id)
 

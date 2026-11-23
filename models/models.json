@@ -12,10 +12,10 @@
     ],
     "background_removal": [
       {
-        "id": "bria-rmbg-2.0",
-        "name": "BRIA RMBG-2.0 (ONNX / BiRefNet SOTA)",
-        "filename": "rembg/models/bria-rmbg/bria-rmbg.onnx",
-        "rembg_model": "bria-rmbg"
+        "id": "birefnet-general-lite",
+        "name": "BiRefNet General Lite (ONNX SOTA)",
+        "filename": "rembg/models/birefnet-general-lite/birefnet-general-lite.onnx",
+        "rembg_model": "birefnet-general-lite"
       }
     ],
     "object_removal": [

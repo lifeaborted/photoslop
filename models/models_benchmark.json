@@ -45,7 +45,7 @@
         "rembg_model": "bria-rmbg",
         "disk_gb": 0.97,
         "est_vram_gb": 0.0,
-        "champion": true
+        "champion": false
       },
       {
         "id": "birefnet-general-lite",
@@ -54,7 +54,7 @@
         "rembg_model": "birefnet-general-lite",
         "disk_gb": 0.21,
         "est_vram_gb": 0.0,
-        "champion": false
+        "champion": true
       },
       {
         "id": "rembg-u2net",

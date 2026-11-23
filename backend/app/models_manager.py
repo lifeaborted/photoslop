@@ -14,7 +14,7 @@ class ModelsManager:
         self.active_models: Dict[str, str] = {
             "inpaint": "dreamshaper-8-inpainting",
             "txt2img": "sdxl-turbo-int8",
-            "background_removal": "bria-rmbg-2.0",
+            "background_removal": "birefnet-general-lite",
             "object_removal": "lama-cleaner-onnx"
         }
         self.cached_config: Dict[str, Any] = {}
