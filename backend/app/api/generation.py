@@ -2,6 +2,7 @@ import time
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from PIL import Image, ImageColor
 from backend.app.models_manager import models_manager
 from backend.app.pipeline_manager import pipeline_manager
 from backend.app.logger import logger, track_model_execution
@@ -38,6 +39,17 @@ class TextEditRequest(BaseModel):
     strength: Optional[float] = 0.5
     seed: Optional[int] = None
     model_id: Optional[str] = None
+
+
+class ReplaceBackgroundRequest(BaseModel):
+    image_data: str
+    bg_type: str = "color"  # "color" | "image" | "prompt"
+    bg_color: Optional[str] = "#ffffff"
+    bg_image_data: Optional[str] = None
+    bg_prompt: Optional[str] = None
+    bg_model_id: Optional[str] = None
+    txt2img_model_id: Optional[str] = None
+    seed: Optional[int] = None
 
 
 class TextToImageRequest(BaseModel):
@@ -180,11 +192,62 @@ def inpaint_image(payload: InpaintRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/replace-background")
+def replace_background(payload: ReplaceBackgroundRequest):
+    """
+    Removes background in one click and composites the subject onto:
+      - solid hex/named color (bg_type='color')
+      - user-supplied background image (bg_type='image')
+      - AI-generated background from prompt (bg_type='prompt')
+    """
+    start_time = time.time()
+    bg_id = payload.bg_model_id or models_manager.active_models.get("background_removal", "birefnet-general-lite")
+    gen_id = payload.txt2img_model_id or models_manager.active_models.get("txt2img", "sdxl-turbo-int8")
+
+    try:
+        input_img = data_uri_to_pil(payload.image_data)
+        target_size = input_img.size
+
+        # 1. Segment foreground
+        bg_pipe = pipeline_manager.get_pipeline("background_removal", bg_id)
+        fg_rgba = bg_pipe.process(input_img).convert("RGBA")
+
+        # 2. Build replacement background
+        bg_type = (payload.bg_type or "color").lower().strip()
+        if bg_type == "image" and payload.bg_image_data:
+            bg_layer = data_uri_to_pil(payload.bg_image_data).convert("RGBA").resize(target_size, Image.Resampling.LANCZOS)
+        elif bg_type == "prompt" and payload.bg_prompt:
+            txt_pipe = pipeline_manager.get_pipeline("txt2img", gen_id)
+            gen_img = txt_pipe.generate(prompt=payload.bg_prompt, width=512, height=512, steps=1, seed=payload.seed)
+            bg_layer = gen_img.convert("RGBA").resize(target_size, Image.Resampling.LANCZOS)
+        else:
+            rgb = ImageColor.getrgb(payload.bg_color or "#ffffff")
+            bg_layer = Image.new("RGBA", target_size, (rgb[0], rgb[1], rgb[2], 255))
+
+        composited = Image.alpha_composite(bg_layer, fg_rgba)
+        result_uri = pil_to_data_uri(composited, format="PNG")
+        elapsed = round(time.time() - start_time, 3)
+
+        return {
+            "status": "success",
+            "bg_type": bg_type,
+            "bg_model_id": bg_id,
+            "txt2img_model_id": gen_id if bg_type == "prompt" else None,
+            "elapsed_seconds": elapsed,
+            "width": composited.width,
+            "height": composited.height,
+            "data_uri": result_uri,
+        }
+    except Exception as e:
+        logger.error(f"Error in replace-background: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/text-edit")
 def text_edit_image(payload: TextEditRequest):
-    """Executes text-guided image modification (e.g. FLUX Kontext / InstructPix2Pix)."""
+    """Executes text-guided whole-image modification (InstructPix2Pix)."""
     start_time = time.time()
-    active_id = payload.model_id or models_manager.active_models.get("edit", "flux1-kontext-q2")
+    active_id = payload.model_id or models_manager.active_models.get("edit", "instruct-pix2pix-fp16")
     model_info = models_manager.get_model_by_id(active_id) or {"id": active_id, "name": active_id}
     model_name = model_info.get("name", active_id)
 

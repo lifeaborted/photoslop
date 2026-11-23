@@ -29,8 +29,9 @@ STAGE_MAP = {
     "bg": ["background_removal"],
     "background_removal": ["background_removal"],
     "txt2img": ["txt2img"],
-    "inpaint": ["object_removal", "inpaint"],
+    "inpaint": ["object_removal", "inpaint", "edit"],
     "object_removal": ["object_removal"],
+    "edit": ["edit"],
     "champions": None,  # special: only champion=True models
 }
 

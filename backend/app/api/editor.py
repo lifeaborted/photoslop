@@ -26,6 +26,10 @@ class AdjustmentsRequest(BaseModel):
     rotate_angle: float = 0.0
     resize_width: Optional[int] = None
     resize_height: Optional[int] = None
+    crop_x: Optional[int] = None
+    crop_y: Optional[int] = None
+    crop_width: Optional[int] = None
+    crop_height: Optional[int] = None
 
 
 class SaveImageRequest(BaseModel):
@@ -144,6 +148,20 @@ def apply_adjustments(payload: AdjustmentsRequest):
         # Saturation (Color)
         if payload.saturation != 1.0:
             img = ImageEnhance.Color(img).enhance(payload.saturation)
+
+        # Crop (applied before resize/rotate when valid rectangle is specified)
+        if (
+            payload.crop_x is not None
+            and payload.crop_y is not None
+            and payload.crop_width
+            and payload.crop_height
+        ):
+            left = max(0, payload.crop_x)
+            top = max(0, payload.crop_y)
+            right = min(img.width, left + payload.crop_width)
+            bottom = min(img.height, top + payload.crop_height)
+            if right > left and bottom > top:
+                img = img.crop((left, top, right, bottom))
 
         # Rotate
         if payload.rotate_angle != 0.0:

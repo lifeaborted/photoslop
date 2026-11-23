@@ -305,6 +305,32 @@ def run_benchmark_for_category(
             if psnrs:
                 metrics["psnr_full_db"] = round(float(sum(psnrs) / len(psnrs)), 2)
 
+        # 5. Instruction-based whole-image editing (InstructPix2Pix)
+        elif category == "edit":
+            inp_manifest = DATASET_DIR / "manifest.json"
+            items = []
+            if inp_manifest.exists():
+                mdata = json.loads(inp_manifest.read_text(encoding="utf-8"))
+                items = mdata.get("inpainting", [])[:max_samples]
+
+            edit_prompts = [
+                "make it look like a vintage oil painting",
+                "turn the scene into winter with snow",
+                "add warm golden sunset lighting",
+            ]
+            for idx, itm in enumerate(items):
+                orig = Image.open(DATASET_DIR / itm["image"]).convert("RGB")
+                prompt = edit_prompts[idx % len(edit_prompts)]
+                res = pipe.text_edit(orig, prompt=prompt, strength=0.5, seed=42 + idx)
+                output_shape = [res.width, res.height]
+                sample_count += 1
+                pending_clip_pairs.append((res, prompt))
+
+                if idx < 3:
+                    save_p = out_subfolder / f"edit_{idx + 1}.png"
+                    res.save(save_p)
+                    saved_examples.append(str(save_p.relative_to(PROJECT_ROOT)).replace("\\", "/"))
+
         infer_seconds = round(time.perf_counter() - t_inf_start, 3)
 
         # Capture memory while model is still hot (pure model telemetry, before CLIP)
@@ -434,6 +460,7 @@ def main():
             {"category": "object_removal", "model_id": "lama-cleaner-onnx"},
             {"category": "inpaint", "model_id": "dreamshaper-8-inpainting"},
             {"category": "inpaint", "model_id": "sd2-inpainting-fp16"},
+            {"category": "edit", "model_id": "instruct-pix2pix-fp16"},
         ])
 
     if args.model:

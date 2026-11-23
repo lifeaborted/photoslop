@@ -55,18 +55,18 @@ class InpaintPipeline(BasePipeline):
                     logger.error(f"Could not load LaMa ONNX from {onnx_path}: {e}")
                     raise
 
-        # 2. Diffusers Inpainting pipeline (DreamShaper 8 / SD 2.0 / SD 1.5)
+        # 2. Diffusers Inpainting or Instruction-Edit (InstructPix2Pix / DreamShaper 8 / SD 2.0)
         model_path = MODELS_DIR / filename if filename else MODELS_DIR / model_id
         if model_path.is_dir() and (model_path / "model_index.json").exists():
             try:
                 import torch
                 if not torch.cuda.is_available():
-                    logger.warning("CUDA is not available; inpaint will use fallback mode.")
+                    logger.warning("CUDA is not available; inpaint/edit will use fallback mode.")
                     self.using_fallback = True
                     self.is_loaded = True
                     return True
 
-                from diffusers import AutoPipelineForInpainting
+                from diffusers import AutoPipelineForInpainting, StableDiffusionInstructPix2PixPipeline
 
                 idx_data = json.loads((model_path / "model_index.json").read_text(encoding="utf-8"))
                 class_name = idx_data.get("_class_name", "")
@@ -84,8 +84,14 @@ class InpaintPipeline(BasePipeline):
                     load_kwargs["safety_checker"] = None
                     load_kwargs["requires_safety_checker"] = False
 
-                logger.info(f"Loading Diffusers inpaint from {model_path} (variant={variant}, class={class_name})")
-                pipe = AutoPipelineForInpainting.from_pretrained(str(model_path), **load_kwargs)
+                is_edit_model = (
+                    "InstructPix2Pix" in class_name
+                    or self.model_info.get("category") == "edit"
+                    or "pix2pix" in model_id
+                )
+                loader_cls = StableDiffusionInstructPix2PixPipeline if is_edit_model else AutoPipelineForInpainting
+                logger.info(f"Loading {loader_cls.__name__} from {model_path} (variant={variant}, class={class_name})")
+                pipe = loader_cls.from_pretrained(str(model_path), **load_kwargs)
 
                 if hasattr(pipe, "enable_attention_slicing"):
                     pipe.enable_attention_slicing()
@@ -271,12 +277,42 @@ class InpaintPipeline(BasePipeline):
         prompt: str,
         strength: float = 0.5,
         seed: Optional[int] = None,
+        steps: int = 15,
     ) -> Image.Image:
-        """Applies lightweight global image adjustments by instruction."""
+        """Applies instruction-guided whole-image editing via InstructPix2Pix (or PIL fallback)."""
         start_time = time.time()
         logger.info(f"Executing text-edit with prompt: '{prompt}' (Model: {self.model_info.get('id')})")
 
         img = image.convert("RGB")
+        orig_size = img.size
+
+        if self.pipe is not None:
+            import torch
+            gen = torch.Generator("cuda")
+            if seed is not None:
+                gen.manual_seed(seed)
+
+            w_inf = min(512, max(64, (img.width // 8) * 8))
+            h_inf = min(512, max(64, (img.height // 8) * 8))
+            inp_img = img.resize((w_inf, h_inf), Image.Resampling.LANCZOS)
+
+            eff_steps = int(self.model_info.get("default_steps", steps))
+            guidance_scale = float(self.model_info.get("default_guidance", 7.5))
+            image_guidance = max(1.0, 2.0 - float(strength))
+
+            res_img = self.pipe(
+                prompt=prompt,
+                image=inp_img,
+                num_inference_steps=max(1, eff_steps),
+                guidance_scale=guidance_scale,
+                image_guidance_scale=image_guidance,
+                generator=gen,
+            ).images[0].resize(orig_size, Image.Resampling.LANCZOS)
+
+            elapsed = time.time() - start_time
+            logger.info(f"InstructPix2Pix text-edit finished in {elapsed:.3f}s")
+            return res_img
+
         prompt_lower = prompt.lower()
 
         if "vintage" in prompt_lower or "retro" in prompt_lower or "sepia" in prompt_lower:
@@ -292,5 +328,5 @@ class InpaintPipeline(BasePipeline):
             img = ImageOps.grayscale(img).convert("RGB")
 
         elapsed = time.time() - start_time
-        logger.info(f"Text-guided edit finished in {elapsed:.3f}s")
+        logger.info(f"Fallback text-guided edit finished in {elapsed:.3f}s")
         return img

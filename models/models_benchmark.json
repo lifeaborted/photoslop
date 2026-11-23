@@ -114,6 +114,20 @@
         "default_guidance": 7.5,
         "champion": false
       }
+    ],
+    "edit": [
+      {
+        "id": "instruct-pix2pix-fp16",
+        "name": "InstructPix2Pix (FP16 Instruction Editing)",
+        "filename": "instruct-pix2pix-fp16",
+        "repo_id": "timbrooks/instruct-pix2pix",
+        "variant": "fp16",
+        "disk_gb": 2.0,
+        "est_vram_gb": 3.2,
+        "default_steps": 15,
+        "default_guidance": 7.5,
+        "champion": true
+      }
     ]
   }
 }
