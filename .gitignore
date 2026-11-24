@@ -43,7 +43,8 @@ Thumbs.db
 
 # Assignments, Documentation & Local Test Suites
 *.pdf
-docs/
+docs/*
+!docs/BACKEND_API.md
 tests/
 model URL.txt
 benchmark_results*.json
