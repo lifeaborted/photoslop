@@ -200,7 +200,7 @@ class TextToImagePipeline(BasePipeline):
         if self.pipe is not None:
             import torch
             generator = torch.Generator(device="cuda")
-            if seed is not None:
+            if seed is not None and seed >= 0:
                 generator.manual_seed(seed)
 
             w_div = max(64, (width // 8) * 8)

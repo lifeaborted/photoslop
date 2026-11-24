@@ -1,272 +1,249 @@
 # PepeShop: Локальный AI-редактор изображений (ТЗ 4)
 
-Проект разработан в рамках контрольной точки магистратуры **«Создание проекта»** по спецификации **«ТЗ 4. Локальный редактор изображений (по типу Photoshop)»**.
-
-Приложение представляет собой локальный веб-редактор с поддержкой многослойной композиции, классических инструментов редактирования и современных открытых нейросетевых моделей для инпейнтинга по маске, текстового редактирования и удаления фона, оптимизированных для работы на видеокартах с **6 ГБ VRAM** (например, NVIDIA GeForce GTX 1660 Ti).
+Локальный веб-редактор с поддержкой многослойной композиции, классическими инструментами обработки и 5 открытыми нейросетевыми моделями (удаление фона на CPU, генерация `txt2img`, стирание объектов, инпейнтинг по маске и текстовое редактирование всего кадра), оптимизированными под видеокарты уровня **6 ГБ VRAM** (NVIDIA GeForce GTX 1660 Ti, архитектура Turing).
 
 ---
 
-## 📑 Содержание
+## Содержание
 - [Архитектура и стек технологий](#архитектура-и-стек-технологий)
 - [Структура репозитория](#структура-репозитория)
-- [Анализ и рекомендации по моделям для 6 ГБ VRAM](#анализ-и-рекомендации-по-моделям-для-6-гб-vram)
-- [Конфигурация моделей (`models.json`)](#конфигурация-моделей-modelsjson)
+- [Утверждённый стек моделей (6 ГБ VRAM / CPU)](#утверждённый-стек-моделей-6-гб-vram--cpu)
+- [Конфигурация моделей (`models/models.json`)](#конфигурация-моделей-modelsmodelsjson)
 - [Система логирования (Loguru)](#система-логирования-loguru)
-- [Развёртывание и установка](#развёртывание-и-установка)
-  - [Способ 1: Бинарный установщик (Python / PyInstaller)](#способ-1-бинарный-установщик)
-  - [Способ 2: 1-Click PowerShell скрипт](#способ-2-1-click-powershell-скрипт)
-  - [Способ 3: Docker Compose вручную](#способ-3-docker-compose-вручную)
-  - [Способ 4: Локальный запуск без Docker](#способ-4-локальный-запуск-без-docker)
-- [Функционал редактора](#функционал-редактора)
+- [Развёртывание и запуск](#развёртывание-и-запуск)
+- [API и функционал редактора](#api-и-функционал-редактора)
 - [Соответствие критериям приёмки ТЗ 4](#соответствие-критериям-приёмки-тз-4)
 
 ---
 
-## 🏛️ Архитектура и стек технологий
+## Архитектура и стек технологий
 
-```
+```text
                +-------------------------------------------------------+
                |              Браузер (Frontend UI)                    |
                |  - HTML5 Canvas Engine (Многослойный рендеринг)       |
-               |  - Вставка Ctrl+V из буфера обмена                    |
-               |  - Пакетная загрузка с распределением по слоям        |
-               |  - Динамический переключатель активных моделей        |
-               |  - Кисть, ластик, маска инпейнтинга, цветокоррекция   |
+               |  - Вставка Ctrl+V, Drag-and-Drop и пакетная загрузка  |
+               |  - Переключатель моделей и панель цветокоррекции      |
+               |  - Кисть, ластик, маска инпейнтинга, Undo/Redo        |
                +---------------------------+---------------------------+
                                            | HTTP REST API
                                            v
                +-------------------------------------------------------+
-               |            FastAPI Backend (Python 3.11+)             |
+               |            FastAPI Backend (Python 3.12)              |
                |  - ModelsManager (динамический парсер models.json)    |
-               |  - Image Processing (Pillow, NumPy)                   |
-               |  - Pipelines (Inpaint, BgRemoval, Txt2Img)            |
+               |  - PipelineManager (кэш и выгрузка конкурирующих GPU) |
+               |  - Pipelines (Txt2Img, Rembg, LaMa, Inpaint, Edit)    |
                |  - Асинхронный логер Loguru -> /logs/log.txt          |
                +---------------------------+---------------------------+
                                            |
-               +---------------------------+---------------------------+
+                                           v
+               +-------------------------------------------------------+
                |                       Хранилище                       |
-               |  - /models  : Веса моделей и models.json              |
-               |  - /output  : Экспортированные изображения (PNG/JPG)  |
-               |  - /logs    : Ротируемый лог log.txt                  |
+               |  - /models  : models.json и веса нейросетей           |
+               |  - /output  : экспортированные изображения (PNG/JPG)  |
+               |  - /logs    : ротируемый лог log.txt                  |
                +-------------------------------------------------------+
 ```
 
-- **Backend:** Python 3.11+, FastAPI, Uvicorn, Pillow, NumPy, Loguru.
-- **Frontend:** Vanilla ES6+ Modules, HTML5 Canvas API, CSS3 Modern Dark UI.
-- **Контейнеризация:** Docker, Docker Compose (NVIDIA Container Runtime).
-- **Сборка установщика:** PyInstaller (генерация standalone binary).
+- **Backend:** Python 3.11+, FastAPI, Uvicorn, PyTorch (CUDA 12.4), TorchAO, Diffusers, ONNX Runtime, rembg, Pillow, NumPy, Loguru.
+- **Frontend:** Vanilla ES6+ Modules, HTML5 Canvas API, CSS3.
+- **Контейнеризация и установка:** Docker, Docker Compose (NVIDIA Container Runtime), Python/PyInstaller-установщик и PowerShell-скрипт.
 
 ---
 
-## 📂 Структура репозитория
+## Структура репозитория
 
-```
+```text
 pepeshop/
-├── models/                     # Каталог моделей и их конфигурации
-│   ├── models.json             # JSON-конфиг моделей с ссылками на Hugging Face
-│   └── README.md               # Документация по весам моделей
-├── output/                     # Каталог для выходных и сгенерированных изображений
-├── logs/                       # Каталог логов
-│   └── log.txt                 # Файл логов (Loguru)
-├── backend/                    # Серверная часть приложения
+├── models/
+│   ├── models.json                 # Продакшн-конфиг 5 утверждённых моделей
+│   ├── models_benchmark.json       # Конфиг кандидатов для воспроизведения тестов
+│   └── README.md                   # Инструкция по весам
+├── output/                         # Папка экспорта готовых изображений
+├── logs/                           # Папка логов (log.txt)
+├── backend/
 │   ├── app/
-│   │   ├── config.py           # Конфигурация путей и настроек
-│   │   ├── logger.py           # Настройка Loguru (перехват логов в /logs/log.txt)
-│   │   ├── models_manager.py   # Динамическое считывание models.json и переключение
-│   │   ├── main.py             # Точка входа FastAPI, middleware, раздача статики
-│   │   ├── pipelines/          # Модульные пайплайны нейросетей
-│   │   │   ├── base.py         # Базовый абстрактный класс
-│   │   │   ├── inpaint_pipeline.py  # Инпейнтинг по маске и контекстное редактирование
-│   │   │   ├── rembg_pipeline.py    # Удаление фона (GPU + CPU fallback)
-│   │   │   └── txt2img_pipeline.py  # Генерация изображений по тексту
+│   │   ├── config.py               # Пути и настройки сервера
+│   │   ├── logger.py               # Loguru + трекер VRAM/RAM и скорости
+│   │   ├── models_manager.py       # Парсинг models.json и переключение моделей
+│   │   ├── pipeline_manager.py     # Кэш активного пайплайна и очистка VRAM
+│   │   ├── main.py                 # FastAPI, CORS, статика фронтенда
+│   │   ├── pipelines/
+│   │   │   ├── base.py
+│   │   │   ├── rembg_pipeline.py   # BiRefNet General Lite (ONNX, CPU)
+│   │   │   ├── txt2img_pipeline.py # SDXL Turbo INT8 (TorchAO + FP32 VAE)
+│   │   │   └── inpaint_pipeline.py # LaMa ONNX + DreamShaper 8 + InstructPix2Pix
 │   │   └── api/
-│   │       ├── models.py       # Эндпоинты списка моделей, переключения, статуса GPU
-│   │       ├── editor.py       # Загрузка пачкой, вставка Ctrl+V, сохранение в /output
-│   │       └── generation.py   # Вызов инференса (inpaint, bg-removal, txt2img)
+│   │       ├── models.py           # /api/models/*
+│   │       ├── editor.py           # /api/editor/* (upload, paste, adjustments+crop, save)
+│   │       └── generation.py       # /api/generation/* (все 6 AI-операций)
 │   ├── requirements.txt
 │   └── run.py
-├── frontend/                   # Клиентская часть (веб-интерфейс)
-│   ├── index.html              # Основная страница редактора
-│   ├── css/
-│   │   └── style.css           # Тёмная тема в стиле профессиональных редакторов
-│   └── js/
-│       ├── api.js              # HTTP-клиент к бекенду
-│       ├── layers.js           # Менеджер слоёв (видимость, порядок, прозрачность)
-│       ├── canvas.js           # Движок рисования, маскирования и истории (Undo/Redo)
-│       └── app.js              # Контроллер UI, обработка Ctrl+V и Drag-and-Drop
+├── frontend/                       # Клиентский интерфейс (HTML/CSS/JS)
+├── scripts/
+│   ├── download_model.py           # Поэтапное скачивание моделей (--stage champions)
+│   ├── cli_test_api.py             # CLI-клиент для проверки API из терминала
+│   ├── prepare_dataset.py          # Подготовка бенчмарк-датасета
+│   ├── benchmark_collector.py      # Сборщик замеров скорости и памяти
+│   └── compute_metrics.py          # Расчёт IoU, Boundary-IoU, CLIP, PSNR, SSIM
 ├── docker/
-│   ├── Dockerfile              # Мультистейдж образ с поддержкой CUDA
-│   └── docker-compose.yml      # Развёртывание с пробросом GPU и томов
-├── installer/                  # Бинарный установщик
-│   ├── installer.py            # Логика установщика (проверка Docker, скачивание моделей)
-│   ├── build_installer.py      # Скрипт компиляции в .exe через PyInstaller
-│   └── install.ps1             # 1-Click PowerShell установщик для Windows
-├── tests/
-│   ├── test_models_manager.py  # Тесты парсинга models.json и переключения
-│   └── test_api.py             # Тесты пайплайнов и конвертации данных
-└── README.md
+│   ├── Dockerfile
+│   └── docker-compose.yml
+└── installer/
+    ├── installer.py
+    ├── build_installer.py
+    └── install.ps1
 ```
 
 ---
 
-## 🧠 Анализ и рекомендации по моделям для 6 ГБ VRAM
+## Утверждённый стек моделей (6 ГБ VRAM / CPU)
 
-В ТЗ 4 указаны требования к целевому ПК: **6–8 ГБ VRAM, 16 ГБ RAM**, а также строгий критерий приёмки:
-> *«Генерация картинки 512×512 на целевом компьютере — не дольше 60 с»*.
+На этапе выбора моделей были отсеяны тяжёлые 12B архитектуры (`FLUX.1` в связке с `T5-XXL` не помещается в 6 ГБ VRAM и нарушает лимит 60 с из-за PCIe-оффлоада) и нестабильные FP16-конфигурации (`Segmind SSD-1B` давал `NaN` на GPU Turing и 59.5 с/кадр). Итоговый проверенный стек на GTX 1660 Ti (6 ГБ VRAM) и Ryzen CPU:
 
-### Оценка предложения использовать FLUX (FLUX Kontext Q2 и FLUX Fill Dev Q2)
+| Задача | Утверждённая модель | Режим | Фактические замеры (`512×512`) |
+| :--- | :--- | :--- | :--- |
+| **Удаление фона** (`background_removal`) | **BiRefNet General Lite** (`ONNX`) | **CPU** (`0 МБ` VRAM) | **IoU `0.9402`** ($\ge 0.90$), B-IoU `0.5770`, **`10.25 с`** *(тёплое `9.69 с`)* |
+| **Генерация** (`txt2img`) | **SDXL Turbo INT8** (`TorchAO`, 1 шаг) | **GPU** (`CUDA`) | **CLIP `0.3572`**, **`3.85 с`** *(прогретое **`1.66 с`**)* |
+| **Удаление объектов** (`object_removal`) | **LaMa FP32** (`ONNX`) | **CPU** (`0 МБ` VRAM) | **PSNR `33.36 dB`**, **SSIM `0.9798`**, **`4.33 с`** |
+| **Инпейнтинг по маске** (`inpaint`) | **DreamShaper 8 Inpainting** (20 шагов) | **GPU `FP32` + `cpu_offload`** | `4.17 ГБ` пик VRAM, **`13.36 с`** *(тёплое `12.90 с`)* |
+| **Правка целиком по тексту** (`edit`) | **InstructPix2Pix FP16** (10 шагов) | **GPU `FP32` + `cpu_offload`** | **CLIP `0.2317`**, `4.23 ГБ` пик VRAM, **`10.15 с`** *(тёплое `9.99 с`)* |
 
-1. **Архитектурное ограничение FLUX:**
-   - Модели семейства **FLUX.1** содержат **12 миллиардов параметров** (MMDiT architecture).
-   - В исходном виде (FP16) веса только трансформера занимают **~24 ГБ**.
-   - Квантизация `Q2_K` снижает размер весов до **~4.2–4.8 ГБ**.
-   - **Но главное узкое место — текстовые энкодеры:** FLUX требует текстовый энкодер **T5-XXL** (~9.5 ГБ в FP16, ~4.8 ГБ в Q4) и **CLIP-L** (~300 МБ).
-   - Одновременно трансформер (4.5 ГБ) и T5-XXL (4.8 ГБ) **не помещаются в 6 ГБ VRAM**. 
-   - Требуется послойный оффлоад в оперативную память (`sequential CPU offload`). 
-   - На видеокарте уровня GTX 1660 Ti оффлоад весов через шину PCIe 3.0 приводит к тому, что 20–30 шагов инференса FLUX Dev могут занимать **от 90 до 180 секунд**, что нарушает 60-секундный лимит приёмки ТЗ!
-   - Квантизация `Q2_K` существенно ухудшает следование промпту и порождает артефакты на краях маски.
-
-### Рекомендуемый сбалансированный набор моделей:
-
-| Категория | Рекомендуемая модель (Основная) | Альтернатива / Экспериментальная | Потребление VRAM | Время на 6 ГБ GPU (512x512) | Преимущества |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Inpainting (по маске)** | **Stable Diffusion 1.5 Inpainting (FP16 / LCM)** | **FLUX.1 Fill Dev (GGUF Q2_K)** | 3.2 ГБ (SD) / 5.8 ГБ (Flux) | **3–6 сек** (SD) / ~65–110 сек (Flux) | SD 1.5 целиком умещается в VRAM, моментальный отклик, чистое смешивание краев. FLUX доступен как SOTA-опция. |
-| **Редактирование по тексту** | **InstructPix2Pix / SDXL Turbo Edit** | **FLUX.1 Kontext (GGUF Q2_K)** | 3.5 ГБ / 5.9 ГБ | **4–8 сек** | Мгновенная стилизация и замена объектов по тексту без маски. |
-| **Генерация (Txt2Img)** | **SDXL Turbo (INT8 / 4 шага)** | **SD 1.5 Realistic Vision** | 4.8 ГБ (SDXL) / 3.0 ГБ (SD) | **5–12 сек** | Фотореализм за 1–4 шага, честное соблюдение лимита в 60с. |
-| **Удаление фона** | **BRIA RMBG-1.4 (ONNX)** | **BiRefNet / U2-Net (rembg)** | ~1.0 ГБ (GPU) или 0 ГБ (CPU) | **0.8–1.5 сек** (GPU) / ~2.5 сек (CPU) | Превосходный IoU > 0.95, моментальная работа на CPU в соответствии с ТЗ. |
-
-> [!TIP]
-> В конфигурационном файле [`models/models.json`](file:///c:/others/Codes/pepeshop/models/models.json) подключены **все указанные модели**, включая **FLUX.1 Fill Dev Q2** и **FLUX.1 Kontext Q2**. В интерфейсе пользователь может динамически переключаться между ними в один клик.
+> **Инженерная адаптация под NVIDIA Turing (GTX 1660 Ti):** для `SDXL Turbo INT8` применён патч TorchAO с FP32-аккумуляцией `torch.mm` и апкастом VAE до `float32`; для SD 1.5 / InstructPix2Pix используется нативный runtime `torch.float32` с `enable_model_cpu_offload()`, что полностью устранило `NaN` и чёрные кадры.
 
 ---
 
-## ⚙️ Конфигурация моделей (`models/models.json`)
+## Конфигурация моделей (`models/models.json`)
 
-Конфигурационный файл хранится строго в `/models/models.json`. Бэкенд считывает его динамически и проверяет фактическое наличие скачанных файлов весов на диске:
+Конфигурация разбита по категориям (`txt2img`, `background_removal`, `object_removal`, `inpaint`, `edit`):
 
 ```json
 {
-  "version": "1.0",
-  "default_models": {
-    "inpaint": "sd15-inpainting-fp16",
-    "edit": "flux1-kontext-q2",
-    "txt2img": "sdxl-turbo-int8",
-    "background_removal": "bria-rmbg-1.4"
-  },
-  "models": [
-    {
-      "id": "sd15-inpainting-fp16",
-      "name": "Stable Diffusion 1.5 Inpainting (FP16)",
-      "category": "inpaint",
-      "filename": "sd-v1-5-inpainting.safetensors",
-      "download_url": "https://huggingface.co/runwayml/stable-diffusion-inpainting/resolve/main/sd-v1-5-inpainting.safetensors",
-      "precision": "fp16",
-      "recommended_vram_gb": 4.0
-    },
-    {
-      "id": "flux1-fill-dev-q2",
-      "name": "FLUX.1 Fill Dev (GGUF Q2_K)",
-      "category": "inpaint",
-      "filename": "flux1-fill-dev-q2_k.gguf",
-      "download_url": "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-fill-dev-Q2_K.gguf",
-      "precision": "q2_k",
-      "recommended_vram_gb": 6.0
-    }
-  ]
+  "categories": {
+    "txt2img": [
+      {
+        "id": "sdxl-turbo-int8",
+        "name": "SDXL Turbo INT8 (TorchAO)",
+        "filename": "sdxl-turbo-torch-int8",
+        "repo_id": "imgailab/sdxl-turbo-torch-int8",
+        "default_steps": 1,
+        "default_guidance": 0.0
+      }
+    ],
+    "background_removal": [
+      {
+        "id": "birefnet-general-lite",
+        "name": "BiRefNet General Lite (ONNX SOTA)",
+        "filename": "rembg/models/birefnet-general-lite/birefnet-general-lite.onnx",
+        "rembg_model": "birefnet-general-lite"
+      }
+    ],
+    "object_removal": [
+      {
+        "id": "lama-cleaner-onnx",
+        "name": "LaMa (Fast Fourier Object Eraser)",
+        "filename": "lama_fp32.onnx",
+        "repo_id": "Carve/LaMa-ONNX"
+      }
+    ],
+    "inpaint": [
+      {
+        "id": "dreamshaper-8-inpainting",
+        "name": "DreamShaper 8 Inpainting (FP16)",
+        "filename": "dreamshaper-8-inpainting",
+        "repo_id": "Lykon/dreamshaper-8-inpainting",
+        "variant": "fp16",
+        "default_steps": 20,
+        "default_guidance": 7.5
+      }
+    ],
+    "edit": [
+      {
+        "id": "instruct-pix2pix-fp16",
+        "name": "InstructPix2Pix (FP16 Instruction Editing)",
+        "filename": "instruct-pix2pix-fp16",
+        "repo_id": "timbrooks/instruct-pix2pix",
+        "variant": "fp16",
+        "default_steps": 10,
+        "default_guidance": 7.5
+      }
+    ]
+  }
 }
 ```
 
-При переключении модели фронтенд отправляет `POST /api/models/switch`, бэкенд переназначает активный пайплайн и логирует событие через **Loguru**.
+---
+
+## Система логирования (Loguru)
+
+Логирование ведётся через `loguru` в [`logs/log.txt`](file:///c:/others/Codes/pepeshop/logs/log.txt) (ротация 20 МБ, хранение 14 дней, `enqueue=True`), включая перехват стандартных логов FastAPI/Uvicorn и детальный трекер `track_model_execution()` (время, пик VRAM, RAM и результат каждого инференса).
 
 ---
 
-## 📝 Система логирования (Loguru)
+## Развёртывание и запуск
 
-Логирование реализовано строго через библиотеку `loguru` с выводом в файл `/logs/log.txt`:
-- Ротация логов при достижении 20 МБ.
-- Срок хранения (retention) — 14 дней.
-- Потокобезопасная асинхронная запись (`enqueue=True`).
-- Перехват всех стандартных логов Uvicorn и FastAPI через кастомный `InterceptHandler`.
-- Запись каждого HTTP-запроса, времени инференса и переключения моделей.
+### 1. Локальный запуск с `uv` (рекомендуемый способ разработки)
 
-Пример лога из `logs/log.txt`:
-```
-2026-10-30 18:41:11.233 | INFO     | backend.app.models_manager:switch_model:93 - Dynamic model switch: Category [inpaint] changed from 'sd15-inpainting-fp16' to 'flux1-fill-dev-q2' (FLUX.1 Fill Dev (GGUF Q2_K))
-2026-10-30 18:41:25.412 | INFO     | backend.app.logger:setup_logging:63 - Loguru logging initialized. Target log file: C:\others\Codes\pepeshop\logs\log.txt
-```
-
----
-
-## 🚀 Развёртывание и установка
-
-### Способ 1: Бинарный установщик
-Установщик автоматически:
-1. Проверяет наличие и активность демона Docker.
-2. Проверяет доступность NVIDIA GPU через `nvidia-smi`.
-3. Создаёт папки `/models`, `/output`, `/logs`.
-4. Считывает `models/models.json` и предлагает скачать веса с Hugging Face (или создаёт валидные заглушки).
-5. Собирает и запускает Docker-контейнеры.
-6. Открывает браузер по адресу `http://localhost:8000`.
-
-Для запуска установщика из исходного скрипта:
-```bash
-python installer/installer.py
-```
-
-Для компиляции в самостоятельный `.exe`-файл:
-```bash
-python installer/build_installer.py
-```
-Собранный бинарник появится в `installer/dist/pepeshop-installer.exe`.
-
-### Способ 2: 1-Click PowerShell скрипт (Windows)
-В корне проекта выполните:
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer/install.ps1
+# Скачать только 5 утверждённых продакшн-моделей
+uv run python scripts/download_model.py --stage champions
+
+# Проверить статус моделей на диске
+uv run python scripts/download_model.py --list
+
+# Запустить FastAPI-сервер (http://localhost:8000, Swagger: /docs)
+uv run python backend/run.py
 ```
 
-### Способ 3: Docker Compose вручную
-```bash
-# Сборка и запуск контейнера с пробросом GPU
+После запуска сервера его можно протестировать из терминала:
+
+```powershell
+uv run python scripts/cli_test_api.py --status
+uv run python scripts/cli_test_api.py --models
+uv run python scripts/cli_test_api.py --task txt2img --prompt "ripe red apple on wood table" --steps 1 --seed 42
+```
+
+### 2. Docker Compose / Установщики
+
+```powershell
+# Docker Compose с пробросом GPU и томов (/models, /output, /logs)
 docker compose -f docker/docker-compose.yml up --build -d
-```
-После запуска редактор доступен по адресу: `http://localhost:8000`.
 
-### Способ 4: Локальный запуск без Docker
-```bash
-pip install -r backend/requirements.txt
-python backend/run.py
+# Либо 1-Click PowerShell / интерактивный Python-установщик
+powershell -ExecutionPolicy Bypass -File installer/install.ps1
+uv run python installer/installer.py
 ```
 
 ---
 
-## 🎨 Функционал редактора
+## API и функционал редактора
 
-1. **Вставка из буфера обмена (Ctrl+V):**
-   - Нажмите `Ctrl+V` в любой момент — изображение автоматически загрузится и создаст **новый слой**.
-2. **Пакетная загрузка с распределением по слоям:**
-   - Нажмите иконку 📁 на панели инструментов и выберите сразу несколько файлов (или перетащите их в окно браузера).
-   - Каждое изображение автоматически займет свой отдельный слой в стеке.
-3. **Удаление фона в 1 клик:**
-   - Нажмите иконку ✂️ — фон активного слоя будет вырезан с использованием SOTA-модели (BRIA RMBG / rembg).
-4. **Инпейнтинг по маске:**
-   - Выберите инструмент 🎭 «Маска инпейнтинга» и закрасьте нужную область красным цветом.
-   - Введите текстовый запрос (например, *«vintage sunglasses»*) и нажмите кнопку *«Инпейнтинг по маске»*.
-5. **Динамическое переключение моделей:**
-   - Выпадающие списки в шапке позволяют переключать активную модель инпейнтинга (SD 1.5 vs FLUX Fill Q2) и удаления фона на лету.
-6. **Экспорт:**
-   - Кнопка *«Сохранить в /output»* экспортирует финальный сведённый результат в формате PNG или JPG с фиксацией в `logs/log.txt`.
+- **Модели (`/api/models`):** `GET /api/models`, `GET /api/models/active`, `POST /api/models/switch`, `GET /api/models/hardware`.
+- **Редактор (`/api/editor`):**
+  - `POST /api/editor/upload` — пакетная загрузка изображений по отдельным слоям;
+  - `POST /api/editor/paste` — вставка из буфера обмена (`Ctrl+V`);
+  - `POST /api/editor/adjustments` — яркость, контраст, насыщенность, **crop** (`crop_x`, `crop_y`, `crop_width`, `crop_height`), поворот, resize;
+  - `POST /api/editor/save` / `GET /api/editor/outputs` — экспорт результата в PNG / JPEG в `/output/`.
+- **AI-операции (`/api/generation`):**
+  - `POST /api/generation/remove-background` — 1-клик удаление фона на CPU (`BiRefNet General Lite`);
+  - `POST /api/generation/replace-background` — вырезание объекта и композитинг на цвет (`color`), пользовательский фон (`image`) или сгенерированный фон (`prompt`);
+  - `POST /api/generation/remove-object` — бесшовное удаление выделенного кистью объекта без промпта (`LaMa FP32 ONNX`);
+  - `POST /api/generation/inpaint` — генерация/замена внутри маски по промпту (`DreamShaper 8 Inpainting`);
+  - `POST /api/generation/text-edit` — преобразование всего кадра по текстовой инструкции (`InstructPix2Pix`);
+  - `POST /api/generation/txt2img` — генерация нового слоя по тексту (`SDXL Turbo INT8`).
+
+Полная интерактивная схема всех запросов доступна после запуска сервера по адресу `http://localhost:8000/docs`.
 
 ---
 
-## 🎯 Соответствие критериям приёмки ТЗ 4
+## Соответствие критериям приёмки ТЗ 4
 
-| Требование ТЗ 4 | Реализация в проекте | Статус |
+| Требование ТЗ 4 | Реализация и замер | Статус |
 | :--- | :--- | :---: |
-| **Базовая правка и слои** | Поддержка слоев, прозрачности, видимости, кисти, ластика, undo/redo, цветокоррекции | ✅ Выполнено |
-| **Автономная работа без интернета** | Локальный инференс, сохранение моделей в `/models`, контейнеризация | ✅ Выполнено |
-| **Удаление фона на CPU** | Пайплайн поддерживает ONNX runtime / rembg с работой без GPU | ✅ Выполнено |
-| **Точность удаления фона IoU ≥ 0.9** | Интеграция моделей BRIA RMBG-1.4 и BiRefNet (типичный IoU > 0.94) | ✅ Выполнено |
-| **Время генерации 512×512 ≤ 60 с** | SD 1.5 Inpainting (~4с) и SDXL Turbo (~8с) гарантированно укладываются в лимит | ✅ Выполнено |
-| **Вставка Ctrl+V и пакетная загрузка** | Реализована обработка события Clipboard и распределение пачки по слоям | ✅ Выполнено |
-| **Логирование через Loguru в /logs/log.txt** | Настроен ротируемый асинхронный логер `loguru` | ✅ Выполнено |
+| **Многослойность и базовые правки** | Слои, прозрачность, видимость, кисть, ластик, Undo/Redo, яркость/контраст/насыщенность, crop, поворот, resize | Выполнено |
+| **Локальная автономность (без облака)** | Все 5 моделей исполняются локально из `/models` с автоматическим управлением VRAM $\le 6$ ГБ | Выполнено |
+| **Удаление фона на CPU без GPU** | `birefnet-general-lite` (`CPUExecutionProvider`, `0 МБ` VRAM модели) | Выполнено |
+| **Точность удаления фона $\text{IoU} \ge 0.90$** | Замер на контрольной выборке DUTS-TE: **`IoU = 0.9402`** (`B-IoU = 0.5770`) | Выполнено |
+| **Время обработки $512\times512 \le 60\text{ с}$** | Все 5 утверждённых моделей работают за **`1.66 – 13.36 с`** (запас скорости 4.5×–36×) | Выполнено |
+| **Вставка `Ctrl+V` и пакетная загрузка** | Поддержка буфера обмена и `multipart/form-data` распределения пачки по слоям | Выполнено |
+| **Логирование через Loguru в `/logs/log.txt`** | Ротируемый асинхронный логер с телеметрией времени, VRAM и RAM | Выполнено |

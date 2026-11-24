@@ -4,14 +4,15 @@ PepeShop Backend CLI Testing Utility
 Allows fast verification of all backend endpoints from the terminal without using the web UI.
 
 Examples:
-  python scripts/cli_test_api.py --status
-  python scripts/cli_test_api.py --models
-  python scripts/cli_test_api.py --switch --category background_removal --model bria-rmbg-2.0
-  python scripts/cli_test_api.py --task txt2img --prompt "a cyberpunk cat, 8k" --steps 1 --seed 42
-  python scripts/cli_test_api.py --task remove-bg --input output/test_sdxl_turbo_int8.png
-  python scripts/cli_test_api.py --task remove-object --input input.png --mask mask.png
-  python scripts/cli_test_api.py --task inpaint --input input.png --mask mask.png --prompt "wooden table"
-  python scripts/cli_test_api.py --task text-edit --input input.png --prompt "make it retro sepia"
+  uv run python scripts/cli_test_api.py --status
+  uv run python scripts/cli_test_api.py --models
+  uv run python scripts/cli_test_api.py --switch --category background_removal --model birefnet-general-lite
+  uv run python scripts/cli_test_api.py --task txt2img --prompt "a cyberpunk cat, 8k" --steps 1 --seed 42
+  uv run python scripts/cli_test_api.py --task remove-bg --input output/test_sdxl_turbo_int8.png
+  uv run python scripts/cli_test_api.py --task replace-bg --input input.png --bg-type color --bg-color "#1e293b"
+  uv run python scripts/cli_test_api.py --task remove-object --input input.png --mask mask.png
+  uv run python scripts/cli_test_api.py --task inpaint --input input.png --mask mask.png --prompt "wooden table"
+  uv run python scripts/cli_test_api.py --task text-edit --input input.png --prompt "make it retro sepia"
 """
 
 import argparse
@@ -100,10 +101,17 @@ def main():
     parser.add_argument("--category", type=str, help="Category for model switch")
     parser.add_argument("--model", type=str, help="Model ID for model switch")
 
-    parser.add_argument("--task", choices=["txt2img", "remove-bg", "remove-object", "inpaint", "text-edit"], help="Task to execute")
+    parser.add_argument(
+        "--task",
+        choices=["txt2img", "remove-bg", "replace-bg", "remove-object", "inpaint", "text-edit"],
+        help="Task to execute",
+    )
     parser.add_argument("--prompt", type=str, default="", help="Prompt for generation or editing")
     parser.add_argument("--input", type=str, help="Path to input image")
     parser.add_argument("--mask", type=str, help="Path to mask image (for inpaint / remove-object)")
+    parser.add_argument("--bg-type", choices=["color", "image", "prompt"], default="color", help="Background type for replace-bg")
+    parser.add_argument("--bg-color", type=str, default="#ffffff", help="Hex color for replace-bg --bg-type color")
+    parser.add_argument("--bg-image", type=str, help="Path to background image for replace-bg --bg-type image")
     parser.add_argument("--steps", type=int, default=1, help="Steps count")
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument("--out", type=str, default="", help="Optional output path")
@@ -167,6 +175,37 @@ def main():
             print(f"[+] Background removal finished in {res['elapsed_seconds']}s")
         else:
             print(f"[-] Remove-bg error {r.status_code}: {r.text}")
+
+    # 2.5 Replace Background
+    elif args.task == "replace-bg":
+        if not args.input:
+            print("[-] --input image is required for replace-bg")
+            return
+        payload = {
+            "image_data": file_to_data_uri(Path(args.input)),
+            "bg_type": args.bg_type,
+            "bg_color": args.bg_color,
+            "seed": args.seed,
+        }
+        if args.bg_type == "image":
+            if not args.bg_image:
+                print("[-] --bg-image is required when --bg-type image")
+                return
+            payload["bg_image_data"] = file_to_data_uri(Path(args.bg_image))
+        elif args.bg_type == "prompt":
+            if not args.prompt:
+                print("[-] --prompt is required when --bg-type prompt")
+                return
+            payload["bg_prompt"] = args.prompt
+        print(f"[*] Requesting replace-background ({args.bg_type}) for: {args.input}...")
+        r = requests.post(f"{API_URL}/api/generation/replace-background", json=payload)
+        if r.status_code == 200:
+            res = r.json()
+            out_file = Path(args.out) if args.out else Path(f"output/cli_replace_bg_{timestamp}.png")
+            save_data_uri_to_file(res["data_uri"], out_file)
+            print(f"[+] Background replaced in {res['elapsed_seconds']}s")
+        else:
+            print(f"[-] Replace-bg error {r.status_code}: {r.text}")
 
     # 3. Clean Object Removal (LaMa)
     elif args.task == "remove-object":

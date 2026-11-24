@@ -79,8 +79,21 @@ def ensure_directories():
     print("  [+] Каталоги успешно подготовлены.")
 
 
+def _is_model_ready(model: dict) -> bool:
+    """Checks whether real model weights exist on disk (ignores empty/broken stubs)."""
+    filename = model.get("filename", "")
+    if not filename:
+        return False
+    dest = MODELS_DIR / filename
+    if not dest.exists():
+        return False
+    if dest.is_dir():
+        return (dest / "model_index.json").exists()
+    return dest.stat().st_size > 1024 * 1024
+
+
 def download_models_interactive():
-    """Read models.json and prompt/download model weights from Hugging Face."""
+    """Read models.json and optionally download missing weights via scripts/download_model.py."""
     print("[3/5] Проверка и загрузка моделей из models/models.json...")
 
     if not MODELS_CONFIG_PATH.exists():
@@ -102,55 +115,50 @@ def download_models_interactive():
 
     print(f"  Найдено описаний моделей в конфиге: {len(models)}")
 
+    missing = []
     for m in models:
-        m_id = m.get("id")
-        name = m.get("name")
-        filename = m.get("filename")
-        url = m.get("download_url", "")
-        dest = MODELS_DIR / filename
-
-        if dest.exists():
-            print(f"  [✓] Модель '{name}' уже присутствует на диске: {filename}")
-            continue
-
-        print(f"\n  [?] Модель: {name} ({m_id})")
-        print(f"      Целевой файл/папка: {filename}")
-
-        if not url or "placeholder" in url or "example" in url:
-            print(f"      [i] Ссылка не указана или является заглушкой. Создаём локальный файл-заглушку.")
-            if "." in filename:
-                with open(dest, "w", encoding="utf-8") as stub_f:
-                    stub_f.write(f"# Placeholder stub for {name}\n")
-            else:
-                dest.mkdir(parents=True, exist_ok=True)
-                with open(dest / "model_index.json", "w", encoding="utf-8") as stub_f:
-                    stub_f.write("{\n  \"_class_name\": \"AutoPipelineForText2Image\"\n}\n")
-            print(f"      [+] Заглушка создана: {filename}")
+        name = m.get("name", m.get("id"))
+        if _is_model_ready(m):
+            print(f"  [✓] Модель '{name}' уже присутствует на диске: {m.get('filename')}")
         else:
-            with open(dest, "w", encoding="utf-8") as stub_f:
-                stub_f.write(f"# Placeholder stub for {name}\n# Download URL: {url}\n")
-            print(f"      [+] Заглушка создана: {filename}")
-        else:
-            # Create stub or prompt download
-            choice = input(f"      Скачать модель сейчас? (y - скачать / n - создать заглушку) [n]: ").strip().lower()
-            if choice == "y":
-                print(f"      Скачивание {filename} с Hugging Face...")
-                try:
-                    def report(count, block_size, total_size):
-                        percent = int(count * block_size * 100 / (total_size or 1))
-                        sys.stdout.write(f"\r      Прогресс: {percent}% [{count * block_size // 1024} KB]")
-                        sys.stdout.flush()
+            print(f"  [!] Модель '{name}' ({m.get('id')}) отсутствует на диске.")
+            missing.append(m)
 
-                    urllib.request.urlretrieve(url, dest, reporthook=report)
-                    print(f"\n      [+] Модель успешно скачана!")
-                except Exception as e:
-                    print(f"\n      [-] Ошибка скачивания ({e}). Создаём файл-заглушку.")
-                    with open(dest, "w", encoding="utf-8") as stub_f:
-                        stub_f.write(f"# Download failed stub for {name}\n")
-            else:
-                print(f"      Пропуск. Создание заглушки для продолжения развёртывания.")
-                with open(dest, "w", encoding="utf-8") as stub_f:
-                    stub_f.write(f"# Placeholder stub for {name}\n# Download URL: {url}\n")
+    if not missing:
+        print("  [+] Все утверждённые модели готовы к запуску.")
+        return
+
+    choice = input(
+        f"\n  Скачать недостающие модели ({len(missing)} шт.) сейчас? [y/N]: "
+    ).strip().lower()
+    if choice != "y":
+        print("  [i] Пропуск скачивания. Веса можно докачать позже: uv run python scripts/download_model.py --stage champions")
+        return
+
+    download_script = PROJECT_ROOT / "scripts" / "download_model.py"
+    if not download_script.exists():
+        print(f"  [-] Скрипт загрузки не найден: {download_script}")
+        return
+
+    # Prefer uv, fallback to project .venv python, then current interpreter
+    venv_py = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    if shutil.which("uv"):
+        cmd = ["uv", "run", "python", str(download_script), "--stage", "champions"]
+    elif venv_py.exists():
+        cmd = [str(venv_py), str(download_script), "--stage", "champions"]
+    else:
+        cmd = [sys.executable, str(download_script), "--stage", "champions"]
+
+    print(f"  Выполняется: {' '.join(cmd)}")
+    try:
+        res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+        if res.returncode != 0:
+            print(
+                "  [-] Не удалось скачать модели автоматически (проверьте uv / .venv и доступ к Hugging Face).\n"
+                "      Запустите вручную: uv run python scripts/download_model.py --stage champions"
+            )
+    except Exception as e:
+        print(f"  [-] Ошибка запуска загрузчика ({e}). Скачайте вручную через scripts/download_model.py.")
 
 
 def deploy_docker():

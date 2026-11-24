@@ -88,7 +88,6 @@ class ModelsManager:
             self.flattened_models = flattened
             logger.info(f"Loaded {len(flattened)} models across {len(categories)} categories from {self.config_path}")
             return self.cached_config
-            return self.cached_config
         except Exception as e:
             logger.error(f"Error loading models configuration: {e}")
             return self.cached_config
@@ -121,6 +120,12 @@ class ModelsManager:
         model = self.get_model_by_id(model_id)
         if not model:
             msg = f"Model '{model_id}' not found in configuration!"
+            logger.error(msg)
+            raise ValueError(msg)
+
+        model_cat = model.get("category")
+        if model_cat and model_cat != category:
+            msg = f"Model '{model_id}' belongs to category '{model_cat}', cannot assign to '{category}'."
             logger.error(msg)
             raise ValueError(msg)
 
@@ -186,7 +191,8 @@ class ModelsManager:
                 "inpaint": [],
                 "edit": [],
                 "txt2img": [],
-                "background_removal": []
+                "background_removal": [],
+                "object_removal": []
             }
         }
         with open(self.config_path, "w", encoding="utf-8") as f:

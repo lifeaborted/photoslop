@@ -236,9 +236,14 @@ class InpaintPipeline(BasePipeline):
 
         # 1. Real Diffusers Inpaint execution
         if self.pipe is not None:
+            if "InstructPix2Pix" in type(self.pipe).__name__:
+                raise ValueError(
+                    f"Model '{self.model_info.get('id')}' is a full-frame text-edit model and does not support masked inpainting."
+                )
+
             import torch
             gen = torch.Generator("cuda")
-            if seed is not None:
+            if seed is not None and seed >= 0:
                 gen.manual_seed(seed)
 
             # Standardize inference resolution to 512x512 (native for SD1.5 / SD2 / DreamShaper)
@@ -295,9 +300,14 @@ class InpaintPipeline(BasePipeline):
         orig_size = img.size
 
         if self.pipe is not None:
+            if "InstructPix2Pix" not in type(self.pipe).__name__:
+                raise ValueError(
+                    f"Model '{self.model_info.get('id')}' is a masked-inpaint model and does not support maskless text-edit."
+                )
+
             import torch
             gen = torch.Generator("cuda")
-            if seed is not None:
+            if seed is not None and seed >= 0:
                 gen.manual_seed(seed)
 
             w_inf = min(512, max(64, (img.width // 8) * 8))
